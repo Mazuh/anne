@@ -14,7 +14,7 @@ or, in any case, just to write for herself.
 
 ## Setting up locally
 
-Requires Python 1.14 and [uv](https://docs.astral.sh/uv/):
+Requires Python 3.14 and [uv](https://docs.astral.sh/uv/):
 
 ```sh
 # install dependencies
@@ -26,7 +26,27 @@ source .venv/bin/activate
 
 ## Usage
 
-Soon.
+```sh
+# initialize workspace (creates directories and database)
+uv run anne bootstrap
+
+# check workspace health
+uv run anne doctor
+
+# add a book
+uv run anne books add "O Príncipe" --author "Maquiavel"
+
+# list books
+uv run anne books list
+
+# import a source file
+uv run anne sources import o-principe ~/path/to/highlights.html
+
+# list sources for a book
+uv run anne sources list o-principe
+```
+
+More pipeline commands (idea parsing, curation, review, media generation) are coming in future phases.
 
 ## License
 

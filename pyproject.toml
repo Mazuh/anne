@@ -4,4 +4,27 @@ version = "0.1.0"
 description = "Pipeline CLI for converting my reading notes into short posts for social networks."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "typer>=0.15",
+    "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+anne = "anne.cli.app:app"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
