@@ -12,6 +12,22 @@ Her diary is one of my favorite books, I was very touched by her story
 and how she loved to read, study languages, do research and write to the world
 or, in any case, just to write for herself.
 
+## Setting up locally
+
+Requires Python 1.14 and [uv](https://docs.astral.sh/uv/):
+
+```sh
+# install dependencies
+uv sync
+
+# activate the virtual environment
+source .venv/bin/activate
+```
+
+## Usage
+
+Soon.
+
 ## License
 
 Under [MIT License](./LICENSE).

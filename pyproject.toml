@@ -1,0 +1,7 @@
+[project]
+name = "anne"
+version = "0.1.0"
+description = "Pipeline CLI for converting my reading notes into short posts for social networks."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
