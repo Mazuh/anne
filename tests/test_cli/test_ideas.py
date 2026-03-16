@@ -14,6 +14,8 @@ from anne.services.books import create_book
 from anne.services.ideas import insert_ideas
 from anne.services.sources import import_source
 from anne.services.parsers import ParsedIdea
+from anne.services.ideas import approve_idea
+from anne.services.llm import RateLimitError
 import anne.services.llm as llm_module
 
 
@@ -185,7 +187,7 @@ def test_curation_triage_approves_and_rejects(tmp_settings: Settings):
     assert "Approved" in result.output
     assert "Rejected" in result.output
     assert "vocab lookup" in result.output
-    assert "2 approved, 1 rejected" in result.output
+    assert "2 approved, 1 rejected (3 ideas)" in result.output
 
     # Verify DB state
     with get_connection(tmp_settings.db_path) as conn:
@@ -245,14 +247,12 @@ def test_curation_triage_all_books(tmp_settings: Settings):
     ):
         result = runner.invoke(app, ["curation-triage"])
     assert result.exit_code == 0
-    assert "3 approved, 0 rejected" in result.output
+    assert "3 approved, 0 rejected (3 ideas)" in result.output
 
 
 def test_curation_triage_rate_limited(tmp_settings: Settings):
     _setup_book_with_parsed_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
-
-    from anne.services.llm import RateLimitError
 
     with (
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
@@ -262,3 +262,177 @@ def test_curation_triage_rate_limited(tmp_settings: Settings):
     assert result.exit_code == 1
     assert "Rate limited" in result.output
     assert "Progress so far has been saved" in result.output
+
+
+# --- idea-review tests ---
+
+
+def _setup_book_with_approved_ideas(tmp_settings: Settings) -> None:
+    """Create a book with approved ideas in the DB."""
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        book = create_book(conn, "Test Book", "Author")
+        source = import_source(
+            conn, book.id, SourceType.kindle_export_html, "sources/kindle/notes.html", "fp1"
+        )
+        ideas = insert_ideas(conn, book.id, source.id, [
+            ParsedIdea(raw_quote="A great insight about the world", raw_note="My thought"),
+            ParsedIdea(raw_quote="Another good idea", raw_note="With a note"),
+        ])
+        for idea in ideas:
+            approve_idea(conn, idea.id)
+
+
+def _mock_review_response(results: list[dict]) -> MagicMock:
+    body = {
+        "candidates": [
+            {"content": {"parts": [{"text": json.dumps(results)}]}}
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(body).encode()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
+
+
+def test_idea_review_happy_path(tmp_settings: Settings):
+    _setup_book_with_approved_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'approved' ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp = _mock_review_response([
+        {
+            "id": idea_ids[0],
+            "reviewed_quote": "Great insight",
+            "reviewed_quote_emphasis": "**Great** insight",
+            "reviewed_comment": "The author reflects on society.",
+        },
+        {
+            "id": idea_ids[1],
+            "reviewed_quote": "Good idea",
+            "reviewed_quote_emphasis": None,
+            "reviewed_comment": "Historical context for this passage.",
+        },
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["idea-review", "test-book"])
+    assert result.exit_code == 0
+    assert "Reviewed" in result.output
+    assert "2 ideas reviewed" in result.output
+
+    # Verify DB state
+    with get_connection(tmp_settings.db_path) as conn:
+        row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
+        assert row["status"] == "reviewed"
+        assert row["reviewed_quote"] == "Great insight"
+        assert row["reviewed_quote_emphasis"] == "**Great** insight"
+        assert row["reviewed_comment"] == "The author reflects on society."
+        # Raw fields untouched
+        assert row["raw_quote"] == "A great insight about the world"
+        assert row["raw_note"] == "My thought"
+
+        row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
+        assert row["status"] == "reviewed"
+        assert row["reviewed_quote_emphasis"] is None
+
+
+def test_idea_review_no_approved_ideas(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        create_book(conn, "Empty Book", "Author")
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["idea-review", "empty-book"])
+    assert result.exit_code == 0
+    assert "no approved ideas" in result.output
+
+
+def test_idea_review_book_not_found(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["idea-review", "nonexistent"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_review_missing_api_key(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
+    with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
+        result = runner.invoke(app, ["idea-review"])
+    assert result.exit_code == 1
+    assert "gemini_api_key" in result.output
+
+
+def test_idea_review_all_books(tmp_settings: Settings):
+    _setup_book_with_approved_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'approved' ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp = _mock_review_response([
+        {"id": idea_ids[0], "reviewed_quote": "Q1", "reviewed_quote_emphasis": None, "reviewed_comment": "C1"},
+        {"id": idea_ids[1], "reviewed_quote": "Q2", "reviewed_quote_emphasis": None, "reviewed_comment": "C2"},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["idea-review"])
+    assert result.exit_code == 0
+    assert "2 ideas reviewed" in result.output
+
+
+def test_idea_review_rate_limited(tmp_settings: Settings):
+    _setup_book_with_approved_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.cli.ideas.review_ideas_with_llm", side_effect=RateLimitError("rate limited")),
+    ):
+        result = runner.invoke(app, ["idea-review", "test-book"])
+    assert result.exit_code == 1
+    assert "Rate limited" in result.output
+    assert "Progress so far has been saved" in result.output
+
+
+def test_idea_review_partial_response(tmp_settings: Settings):
+    _setup_book_with_approved_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'approved' ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    # LLM only returns result for first idea, omits second
+    mock_resp = _mock_review_response([
+        {"id": idea_ids[0], "reviewed_quote": "Q1", "reviewed_quote_emphasis": None, "reviewed_comment": "C1"},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["idea-review", "test-book"])
+    assert result.exit_code == 0
+    assert "1 idea reviewed" in result.output
+
+    # Verify: first idea reviewed, second stays approved
+    with get_connection(tmp_settings.db_path) as conn:
+        row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
+        assert row["status"] == "reviewed"
+        row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
+        assert row["status"] == "approved"

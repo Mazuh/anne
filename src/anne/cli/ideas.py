@@ -9,9 +9,9 @@ from anne.config.settings import load_settings
 from anne.db.connection import get_connection
 from anne.models import Book, Idea, IdeaStatus, Source, SourceType
 from anne.services.books import get_book, list_books
-from anne.services.ideas import approve_idea, get_ideas_by_status, get_unparsed_sources, insert_ideas, reject_idea
+from anne.services.ideas import approve_idea, get_ideas_by_status, get_unparsed_sources, insert_ideas, reject_idea, review_idea
 from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
-from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm
+from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm
 
 LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
 
@@ -137,7 +137,6 @@ def curation_triage(
     for book in books:
         rprint(f"[bold]{book.title}[/bold]")
         try:
-            # One connection per book: commits after each book so progress is saved on rate-limit
             with get_connection(settings.db_path) as conn:
                 parsed_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.parsed)
                 if not parsed_ideas:
@@ -171,6 +170,7 @@ def curation_triage(
                             total_rejected += 1
                             reason = f" — {d.rejection_reason}" if d.rejection_reason else ""
                             rprint(f"  [yellow]Rejected[/yellow] idea {d.idea_id}{reason}")
+                    conn.commit()
         except RateLimitError as e:
             rprint("  [red]Rate limited by Gemini API.[/red] Progress so far has been saved.")
             if str(e):
@@ -181,4 +181,78 @@ def curation_triage(
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 
-    rprint(f"\n[bold]Total: {total_approved} approved, {total_rejected} rejected[/bold]")
+    label = "idea" if total_approved + total_rejected == 1 else "ideas"
+    rprint(f"\n[bold]Total: {total_approved} approved, {total_rejected} rejected ({total_approved + total_rejected} {label})[/bold]")
+
+
+def idea_review(
+    book_slug: str | None = typer.Argument(None, help="Book slug (omit to review all books)"),
+) -> None:
+    """Review approved ideas: refine quotes and add factual context using LLM."""
+    settings = load_settings()
+    api_key = settings.gemini_api_key
+    if not api_key:
+        rprint("[red]Error:[/red] gemini_api_key is not configured.")
+        raise typer.Exit(code=1)
+
+    with get_connection(settings.db_path) as conn:
+        if book_slug:
+            book = get_book(conn, book_slug)
+            if book is None:
+                rprint(f"[red]Error:[/red] book not found: {book_slug}")
+                raise typer.Exit(code=1)
+            books = [book]
+        else:
+            books = list_books(conn)
+
+    total_reviewed = 0
+    for book in books:
+        rprint(f"[bold]{book.title}[/bold]")
+        try:
+            with get_connection(settings.db_path) as conn:
+                approved_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.approved)
+                if not approved_ideas:
+                    rprint(f"  [dim]{book.title}: no approved ideas to review[/dim]")
+                    continue
+
+                chunks = [
+                    approved_ideas[i : i + settings.review_chunk_size]
+                    for i in range(0, len(approved_ideas), settings.review_chunk_size)
+                ]
+                for chunk in chunks:
+                    results = review_ideas_with_llm(
+                        api_key=api_key,
+                        book_title=book.title,
+                        book_author=book.author,
+                        ideas=chunk,
+                        content_language=settings.content_language,
+                        quote_target_length=settings.review_quote_target_length,
+                        max_input_tokens=settings.max_llm_input_tokens,
+                        min_interval=settings.llm_call_interval,
+                    )
+                    for r in results:
+                        review_idea(
+                            conn,
+                            r.idea_id,
+                            r.reviewed_quote,
+                            r.reviewed_quote_emphasis,
+                            r.reviewed_comment,
+                        )
+                        total_reviewed += 1
+                        preview = r.reviewed_quote[:_MAX_PREVIEW_LEN]
+                        if len(r.reviewed_quote) > _MAX_PREVIEW_LEN:
+                            preview += "..."
+                        rprint(f'  [green]Reviewed[/green] idea {r.idea_id} — Quote: "{escape(preview)}"')
+                    conn.commit()
+        except RateLimitError as e:
+            rprint("  [red]Rate limited by Gemini API.[/red] Progress so far has been saved.")
+            if str(e):
+                rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
+        except ContentTooLargeError as e:
+            rprint(f"  [red]Error:[/red] {e}")
+            raise typer.Exit(code=1)
+
+    label = "idea" if total_reviewed == 1 else "ideas"
+    rprint(f"\n[bold]Total: {total_reviewed} {label} reviewed[/bold]")

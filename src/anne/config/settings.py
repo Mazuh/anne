@@ -13,6 +13,9 @@ class Settings(BaseModel):
     max_llm_input_tokens: int = 7500
     llm_call_interval: int = 10
     triage_chunk_size: int = 25
+    content_language: str = "pt-BR"
+    review_chunk_size: int = 10
+    review_quote_target_length: int = 80
 
     @property
     def db_path(self) -> Path:

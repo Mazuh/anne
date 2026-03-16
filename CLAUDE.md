@@ -35,6 +35,7 @@ uv run anne sources import <slug> <file>      # import source file
 uv run anne sources list <slug>               # list sources for a book
 uv run anne idea-parse [slug]                # parse sources into ideas
 uv run anne curation-triage [slug]           # triage parsed ideas (approve/reject)
+uv run anne idea-review [slug]              # review approved ideas (refine quotes, add context)
 ```
 
 ## Conventions

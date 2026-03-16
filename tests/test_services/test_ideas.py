@@ -11,6 +11,7 @@ from anne.services.ideas import (
     is_source_parsed,
     list_ideas,
     reject_idea,
+    review_idea,
 )
 from anne.models import IdeaStatus
 from anne.services.parsers import ParsedIdea
@@ -145,3 +146,46 @@ def test_reject_idea_already_approved(tmp_db: sqlite3.Connection):
     approve_idea(tmp_db, ideas[0].id)
     with pytest.raises(ValueError, match="not in parsed status"):
         reject_idea(tmp_db, ideas[0].id, "too late")
+
+
+def test_review_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Original quote", raw_note="A note")])
+    approve_idea(tmp_db, ideas[0].id)
+
+    reviewed = review_idea(
+        tmp_db, ideas[0].id,
+        reviewed_quote="Shortened quote",
+        reviewed_quote_emphasis="**Shortened** quote",
+        reviewed_comment="Factual context about the author.",
+    )
+    assert reviewed.status == IdeaStatus.reviewed
+    assert reviewed.reviewed_quote == "Shortened quote"
+    assert reviewed.reviewed_quote_emphasis == "**Shortened** quote"
+    assert reviewed.reviewed_comment == "Factual context about the author."
+    # Raw fields must be untouched
+    assert reviewed.raw_quote == "Original quote"
+    assert reviewed.raw_note == "A note"
+
+
+def test_review_idea_not_approved(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    # Still in 'parsed' status
+    with pytest.raises(ValueError, match="not in approved status"):
+        review_idea(tmp_db, ideas[0].id, "q", None, "c")
+
+
+def test_review_idea_not_found(tmp_db: sqlite3.Connection):
+    with pytest.raises(ValueError, match="not in approved status"):
+        review_idea(tmp_db, 9999, "q", None, "c")
+
+
+def test_review_idea_emphasis_null(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    approve_idea(tmp_db, ideas[0].id)
+
+    reviewed = review_idea(tmp_db, ideas[0].id, "Short Q", None, "Context.")
+    assert reviewed.reviewed_quote_emphasis is None
+    assert reviewed.reviewed_quote == "Short Q"

@@ -59,16 +59,19 @@ anne idea-parse o-principe
 anne idea-parse
 
 # triage parsed ideas: approve or reject using LLM (lenient first pass),
-# optionally book sug can be specified
+# optionally book slug can be specified too
 anne curation-triage
+
+# review approved ideas: refine quotes, add factual context using LLM
+# optionally book slug can be specified too
+anne idea-review
 ```
 
-More pipeline commands (review, media generation) are coming in future phases.
+More pipeline commands (context, presentation, media generation) are coming in future phases.
 
 ## Planning
 
-From Claude using ~/Downloads/anne-technical-proposal.md as source of truth,
-and as optional context for motivations behind it we have /Users/mazuh/Downloads/anne-original-draft.md too.
+From Claude using ~/Downloads/anne-technical-proposal.md as source of truth:
 
 ```
   - ✅ DONE Phase 1 — Foundation + Books + Import

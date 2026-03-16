@@ -70,6 +70,32 @@ def approve_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
     return Idea(**dict(row))
 
 
+def review_idea(
+    conn: sqlite3.Connection,
+    idea_id: int,
+    reviewed_quote: str,
+    reviewed_quote_emphasis: str | None,
+    reviewed_comment: str,
+) -> Idea:
+    cursor = conn.execute(
+        """UPDATE ideas SET status = ?, reviewed_quote = ?, reviewed_quote_emphasis = ?,
+           reviewed_comment = ?, updated_at = datetime('now')
+           WHERE id = ? AND status = ?""",
+        (
+            IdeaStatus.reviewed,
+            reviewed_quote,
+            reviewed_quote_emphasis,
+            reviewed_comment,
+            idea_id,
+            IdeaStatus.approved,
+        ),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Idea not found or not in approved status: {idea_id}")
+    row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    return Idea(**dict(row))
+
+
 def reject_idea(
     conn: sqlite3.Connection, idea_id: int, rejection_reason: str | None
 ) -> Idea:

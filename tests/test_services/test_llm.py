@@ -5,7 +5,7 @@ import pytest
 
 import anne.services.llm as llm_module
 from anne.models import Idea, IdeaStatus
-from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, ContentTooLargeError, RateLimitError
+from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, ContentTooLargeError, RateLimitError
 
 
 @pytest.fixture(autouse=True)
@@ -189,3 +189,66 @@ def test_triage_ideas_with_llm_content_too_large():
     ideas = [_make_idea(1, raw_quote="x" * 10000)]
     with pytest.raises(ContentTooLargeError, match="Triage prompt too large"):
         triage_ideas_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)
+
+
+# --- review_ideas_with_llm tests ---
+
+
+def _make_approved_idea(idea_id: int, raw_quote: str = "quote", raw_note: str | None = None) -> Idea:
+    return Idea(
+        id=idea_id, book_id=1, source_id=1, status=IdeaStatus.approved,
+        raw_quote=raw_quote, raw_note=raw_note,
+        created_at="2026-01-01T00:00:00", updated_at="2026-01-01T00:00:00",
+    )
+
+
+def test_review_ideas_with_llm_happy_path():
+    ideas = [_make_approved_idea(1, raw_quote="A long original quote from the book")]
+    response = json.dumps([
+        {
+            "id": 1,
+            "reviewed_quote": "Short quote",
+            "reviewed_quote_emphasis": "**Short** quote",
+            "reviewed_comment": "The author wrote this during wartime.",
+        }
+    ])
+    mock = _mock_urlopen(_gemini_response(response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        results = review_ideas_with_llm("fake-key", "Book", "Author", ideas)
+    assert len(results) == 1
+    assert results[0].idea_id == 1
+    assert results[0].reviewed_quote == "Short quote"
+    assert results[0].reviewed_quote_emphasis == "**Short** quote"
+    assert results[0].reviewed_comment == "The author wrote this during wartime."
+
+
+def test_review_ideas_with_llm_unknown_id_skipped():
+    ideas = [_make_approved_idea(1)]
+    response = json.dumps([
+        {"id": 1, "reviewed_quote": "Q", "reviewed_quote_emphasis": None, "reviewed_comment": "C"},
+        {"id": 999, "reviewed_quote": "X", "reviewed_quote_emphasis": None, "reviewed_comment": "Y"},
+    ])
+    mock = _mock_urlopen(_gemini_response(response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        results = review_ideas_with_llm("fake-key", "Book", "Author", ideas)
+    assert len(results) == 1
+    assert results[0].idea_id == 1
+
+
+def test_review_ideas_with_llm_omitted_ids_not_defaulted():
+    ideas = [_make_approved_idea(1), _make_approved_idea(2), _make_approved_idea(3)]
+    response = json.dumps([
+        {"id": 1, "reviewed_quote": "Q1", "reviewed_quote_emphasis": None, "reviewed_comment": "C1"},
+    ])
+    mock = _mock_urlopen(_gemini_response(response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        results = review_ideas_with_llm("fake-key", "Book", "Author", ideas)
+    # Only idea 1 returned — ideas 2 and 3 are NOT defaulted
+    assert len(results) == 1
+    assert results[0].idea_id == 1
+
+
+def test_review_ideas_with_llm_content_too_large():
+    ideas = [_make_approved_idea(1, raw_quote="x" * 10000)]
+    with pytest.raises(ContentTooLargeError, match="Review prompt too large"):
+        review_ideas_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)
