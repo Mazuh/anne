@@ -54,6 +54,23 @@ anne sources list o-principe
 
 More pipeline commands (idea parsing, curation, review, media generation) are coming in future phases.
 
+## Planning
+
+From Claude using ~/Downloads/anne-technical-proposal.md as source of truth,
+and as optional context for motivations behind it we have /Users/mazuh/Downloads/anne-original-draft.md too.
+
+```
+  - ✅ DONE Phase 1 — Foundation + Books + Import
+  - Phase 2 — Idea parsing (source parsers for Kindle HTML, My Clippings, markdown, plain text; extract quotes/notes into Idea records)                                                      
+  - Phase 3 — Curation triage (approve/reject ideas, LLM-assisted or manual, rejection reasons)                                                                                              
+  - Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)                                                                     
+  - Phase 5 — Curation presentation (caption/presentation text generation, tags)                                                                                                             
+  - Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)                                                                                                   
+  - Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)                                                                                          
+  - Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)                                                                                
+  - Phase 9 — Publication tracking (posted_at, publish_count, performance_notes, repost candidates) 
+```
+
 ## License
 
 Under [MIT License](./LICENSE).
