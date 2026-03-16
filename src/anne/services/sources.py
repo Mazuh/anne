@@ -1,6 +1,8 @@
 import hashlib
 import sqlite3
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 from anne.models import Source, SourceType
 
@@ -51,6 +53,34 @@ def import_source(
         (book_id, fingerprint),
     ).fetchone()
     return Source(**dict(row))
+
+
+def is_url(value: str) -> bool:
+    return value.startswith("http://") or value.startswith("https://")
+
+
+MAX_FETCH_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def fetch_url(url: str, dest_dir: Path) -> Path:
+    parsed = urlparse(url)
+    # Build a filename from domain + path to avoid collisions
+    domain = parsed.netloc.replace(".", "-")
+    path_part = parsed.path.strip("/").replace("/", "-") or "index"
+    filename = f"{domain}--{path_part}"
+    if not filename.endswith(".html"):
+        filename += ".html"
+    dest = dest_dir / filename
+
+    req = urllib.request.Request(url, headers={"User-Agent": "Anne/0.1"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = resp.read(MAX_FETCH_SIZE + 1)
+        if len(data) > MAX_FETCH_SIZE:
+            raise ValueError(f"Response too large (>{MAX_FETCH_SIZE} bytes)")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+
+    return dest
 
 
 def list_sources(conn: sqlite3.Connection, book_id: int) -> list[Source]:

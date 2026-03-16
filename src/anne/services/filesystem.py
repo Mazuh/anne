@@ -9,6 +9,7 @@ SOURCE_TYPE_SUBFOLDER = {
     SourceType.my_clippings_txt: "kindle",
     SourceType.essay_md: "essays",
     SourceType.essay_txt: "essays",
+    SourceType.essay_html: "essays",
     SourceType.manual_notes: "manual",
 }
 

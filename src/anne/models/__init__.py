@@ -8,6 +8,7 @@ class SourceType(StrEnum):
     my_clippings_txt = "my_clippings_txt"
     essay_md = "essay_md"
     essay_txt = "essay_txt"
+    essay_html = "essay_html"
     manual_notes = "manual_notes"
 
 

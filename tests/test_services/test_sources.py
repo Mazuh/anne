@@ -7,7 +7,9 @@ from anne.services.sources import (
     compute_fingerprint,
     detect_duplicate,
     detect_source_type,
+    fetch_url,
     import_source,
+    is_url,
     list_sources,
 )
 
@@ -46,6 +48,30 @@ def test_detect_duplicate(tmp_db: sqlite3.Connection):
     assert not detect_duplicate(tmp_db, book.id, "abc123")
     import_source(tmp_db, book.id, SourceType.essay_md, "test.md", "abc123")
     assert detect_duplicate(tmp_db, book.id, "abc123")
+
+
+def test_is_url():
+    assert is_url("https://example.com/page")
+    assert is_url("http://example.com")
+    assert not is_url("/some/file.txt")
+    assert not is_url("relative/path.html")
+
+
+def test_fetch_url(tmp_path: Path):
+    from unittest.mock import patch, MagicMock
+
+    html_content = b"<html><body>Hello</body></html>"
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = html_content
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch("anne.services.sources.urllib.request.urlopen", return_value=mock_resp):
+        result = fetch_url("https://example.com/p/my-essay", tmp_path)
+
+    assert result.exists()
+    assert result.name == "example-com--p-my-essay.html"
+    assert result.read_bytes() == html_content
 
 
 def test_list_sources(tmp_db: sqlite3.Connection):

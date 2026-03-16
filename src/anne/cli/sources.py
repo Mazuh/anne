@@ -1,3 +1,6 @@
+import sqlite3
+import tempfile
+import urllib.error
 from pathlib import Path
 
 import typer
@@ -5,15 +8,17 @@ from rich import print as rprint
 from rich.table import Table
 from rich.console import Console
 
-from anne.config.settings import load_settings
+from anne.config.settings import Settings, load_settings
 from anne.db.connection import get_connection
-from anne.models import SourceType
+from anne.models import Book, SourceType
 from anne.services.books import get_book
 from anne.services.sources import (
     compute_fingerprint,
     detect_duplicate,
     detect_source_type,
+    fetch_url,
     import_source,
+    is_url,
     list_sources,
 )
 from anne.services.filesystem import resolve_source_dest, copy_source_file
@@ -25,10 +30,10 @@ console = Console()
 @app.command("import")
 def import_cmd(
     book_slug: str = typer.Argument(help="Book slug"),
-    file_path: Path = typer.Argument(help="Path to source file", exists=True),
+    location: str = typer.Argument(help="Path to source file or URL"),
     type: SourceType | None = typer.Option(None, "--type", "-t", help="Source type (auto-detected if omitted)"),
 ) -> None:
-    """Import a source file for a book."""
+    """Import a source file or URL for a book."""
     settings = load_settings()
     with get_connection(settings.db_path) as conn:
         book = get_book(conn, book_slug)
@@ -36,20 +41,37 @@ def import_cmd(
             rprint(f"[red]Error:[/red] book not found: {book_slug}")
             raise typer.Exit(code=1)
 
-        file_path = file_path.resolve()
-        fingerprint = compute_fingerprint(file_path)
+        if is_url(location):
+            rprint(f"Fetching {location}...")
+            try:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    fetched_path = fetch_url(location, Path(tmp_dir))
+                    _do_import(conn, settings, book, fetched_path, type or SourceType.essay_html)
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                rprint(f"[red]Error:[/red] failed to fetch URL: {e}")
+                raise typer.Exit(code=1)
+        else:
+            file_path = Path(location).resolve()
+            if not file_path.exists():
+                rprint(f"[red]Error:[/red] file not found: {location}")
+                raise typer.Exit(code=1)
+            source_type = type if type is not None else detect_source_type(file_path)
+            _do_import(conn, settings, book, file_path, source_type)
 
-        if detect_duplicate(conn, book.id, fingerprint):
-            rprint(f"[yellow]Skipped:[/yellow] file already imported (same fingerprint).")
-            return
 
-        source_type = type if type is not None else detect_source_type(file_path)
-        dest = resolve_source_dest(settings.books_dir, book.slug, source_type, file_path.name)
-        copy_source_file(file_path, dest)
+def _do_import(conn: sqlite3.Connection, settings: Settings, book: Book, file_path: Path, source_type: SourceType) -> None:
+    fingerprint = compute_fingerprint(file_path)
 
-        relative_path = str(dest.relative_to(settings.books_dir / book.slug))
-        source = import_source(conn, book.id, source_type, relative_path, fingerprint)
-        rprint(f"[green]Imported:[/green] {file_path.name} as {source_type.value} (id: {source.id})")
+    if detect_duplicate(conn, book.id, fingerprint):
+        rprint(f"[yellow]Skipped:[/yellow] source already imported (same fingerprint).")
+        return
+
+    dest = resolve_source_dest(settings.books_dir, book.slug, source_type, file_path.name)
+    copy_source_file(file_path, dest)
+
+    relative_path = str(dest.relative_to(settings.books_dir / book.slug))
+    source = import_source(conn, book.id, source_type, relative_path, fingerprint)
+    rprint(f"[green]Imported:[/green] {file_path.name} as {source_type.value} (id: {source.id})")
 
 
 @app.command("list")

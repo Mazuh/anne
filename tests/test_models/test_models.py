@@ -9,6 +9,7 @@ def test_source_type_values():
     assert SourceType.my_clippings_txt == "my_clippings_txt"
     assert SourceType.essay_md == "essay_md"
     assert SourceType.essay_txt == "essay_txt"
+    assert SourceType.essay_html == "essay_html"
     assert SourceType.manual_notes == "manual_notes"
 
 

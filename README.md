@@ -38,13 +38,15 @@ uv run anne bootstrap
 anne doctor
 
 # add a book
+# (just to group pipeline inputs and outputs, author flag is optional, just for books of same name)
 anne books add "O Príncipe" --author "Maquiavel"
 
 # list books
 anne books list
 
-# import a source file
-anne sources import o-principe ~/path/to/highlights.html
+# import a source of human thoughts
+# (a ssr url for an essay about the book, a file path to kindle highlights/notes etc.)
+anne sources import o-principe https://notebook.mazuh.com/p/a-logica-politica-eterna-do-principe
 
 # list sources for a book
 anne sources list o-principe
