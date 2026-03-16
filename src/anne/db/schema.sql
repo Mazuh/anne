@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS ideas (
     book_id INTEGER NOT NULL REFERENCES books(id),
     source_id INTEGER NOT NULL REFERENCES sources(id),
     status TEXT NOT NULL DEFAULT 'parsed',
-    raw_quote TEXT NOT NULL,
+    raw_quote TEXT,
     raw_note TEXT,
     raw_ref TEXT,
     rejection_reason TEXT,

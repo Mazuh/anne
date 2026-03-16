@@ -27,7 +27,7 @@ def test_compute_fingerprint(tmp_path: Path):
 
 def test_detect_source_type():
     assert detect_source_type(Path("file.html")) == SourceType.kindle_export_html
-    assert detect_source_type(Path("file.txt")) == SourceType.my_clippings_txt
+    assert detect_source_type(Path("file.txt")) == SourceType.essay_txt
     assert detect_source_type(Path("file.md")) == SourceType.essay_md
     assert detect_source_type(Path("file.xyz")) == SourceType.manual_notes
 

@@ -12,9 +12,9 @@ Local-first Python CLI pipeline for turning book reading notes into Instagram-re
 
 ```
 src/anne/
-  cli/          # Typer commands (bootstrap, doctor, books, sources)
+  cli/          # Typer commands (bootstrap, doctor, books, sources, ideas)
   models/       # Pydantic DTOs + StrEnums (Book, Source, Idea, Asset, Post)
-  services/     # Business logic (books, sources, filesystem)
+  services/     # Business logic (books, sources, ideas, parsers, llm, filesystem)
   db/           # SQLite connection, schema.sql, migrations
   config/       # Pydantic Settings, YAML config loader
   utils/        # slugify, exceptions
@@ -33,6 +33,7 @@ uv run anne books list                        # list books
 uv run anne books show <slug>                 # show book details
 uv run anne sources import <slug> <file>      # import source file
 uv run anne sources list <slug>               # list sources for a book
+uv run anne idea-parse [slug]                # parse sources into ideas
 ```
 
 ## Conventions

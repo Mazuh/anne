@@ -1,0 +1,49 @@
+import sqlite3
+
+from anne.models import Idea, Source
+from anne.services.parsers import ParsedIdea
+
+
+def is_source_parsed(conn: sqlite3.Connection, source_id: int) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM ideas WHERE source_id = ?", (source_id,)
+    ).fetchone()
+    return row[0] > 0
+
+
+def get_unparsed_sources(conn: sqlite3.Connection, book_id: int) -> list[Source]:
+    rows = conn.execute(
+        """SELECT s.* FROM sources s
+           WHERE s.book_id = ?
+           AND NOT EXISTS (SELECT 1 FROM ideas i WHERE i.source_id = s.id)
+           ORDER BY s.imported_at""",
+        (book_id,),
+    ).fetchall()
+    return [Source(**dict(r)) for r in rows]
+
+
+def insert_ideas(
+    conn: sqlite3.Connection,
+    book_id: int,
+    source_id: int,
+    parsed_ideas: list[ParsedIdea],
+) -> list[Idea]:
+    results: list[Idea] = []
+    for pi in parsed_ideas:
+        conn.execute(
+            """INSERT INTO ideas (book_id, source_id, status, raw_quote, raw_note, raw_ref)
+               VALUES (?, ?, 'parsed', ?, ?, ?)""",
+            (book_id, source_id, pi.raw_quote, pi.raw_note, pi.raw_ref),
+        )
+        row = conn.execute(
+            "SELECT * FROM ideas WHERE id = last_insert_rowid()"
+        ).fetchone()
+        results.append(Idea(**dict(row)))
+    return results
+
+
+def list_ideas(conn: sqlite3.Connection, book_id: int) -> list[Idea]:
+    rows = conn.execute(
+        "SELECT * FROM ideas WHERE book_id = ? ORDER BY id", (book_id,)
+    ).fetchall()
+    return [Idea(**dict(r)) for r in rows]

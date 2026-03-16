@@ -9,7 +9,7 @@ from anne.models import Source, SourceType
 
 EXTENSION_TYPE_MAP: dict[str, SourceType] = {
     ".html": SourceType.kindle_export_html,
-    ".txt": SourceType.my_clippings_txt,
+    ".txt": SourceType.essay_txt,
     ".md": SourceType.essay_md,
 }
 

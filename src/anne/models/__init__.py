@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 class SourceType(StrEnum):
     kindle_export_html = "kindle_export_html"
-    my_clippings_txt = "my_clippings_txt"
     essay_md = "essay_md"
     essay_txt = "essay_txt"
     essay_html = "essay_html"
@@ -56,7 +55,7 @@ class Idea(BaseModel):
     book_id: int
     source_id: int
     status: IdeaStatus
-    raw_quote: str
+    raw_quote: str | None = None
     raw_note: str | None = None
     raw_ref: str | None = None
     rejection_reason: str | None = None

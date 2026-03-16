@@ -50,9 +50,16 @@ anne sources import o-principe https://notebook.mazuh.com/p/a-logica-politica-et
 
 # list sources for a book
 anne sources list o-principe
+
+# parse sources into ideas (deterministic for Kindle HTML, LLM-assisted for essays)
+# requires Gemini API key (prompted during bootstrap, or set ANNE_GEMINI_API_KEY env var)
+anne idea-parse o-principe
+
+# parse all books at once
+anne idea-parse
 ```
 
-More pipeline commands (idea parsing, curation, review, media generation) are coming in future phases.
+More pipeline commands (curation, review, media generation) are coming in future phases.
 
 ## Planning
 
@@ -61,7 +68,7 @@ and as optional context for motivations behind it we have /Users/mazuh/Downloads
 
 ```
   - ✅ DONE Phase 1 — Foundation + Books + Import
-  - Phase 2 — Idea parsing (source parsers for Kindle HTML, My Clippings, markdown, plain text; extract quotes/notes into Idea records)                                                      
+  - ✅ DONE Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)                                                      
   - Phase 3 — Curation triage (approve/reject ideas, LLM-assisted or manual, rejection reasons)                                                                                              
   - Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)                                                                     
   - Phase 5 — Curation presentation (caption/presentation text generation, tags)                                                                                                             
