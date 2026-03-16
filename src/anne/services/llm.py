@@ -174,21 +174,35 @@ class TriageDecision:
 
 _TRIAGE_PROMPT_TEMPLATE = """\
 You are an assistant that triages reading highlights/notes from the book \
-"{book_title}" by {book_author}.
+"{book_title}" by {book_author}. Use your knowledge of this book to understand \
+the weight and relevance of each highlight in context.
 
-Your task is a LENIENT first pass: approve by default, only reject the obviously \
-irrelevant stuff. When in doubt, APPROVE.
+Your goal: decide which highlights could become compelling, standalone social media \
+posts about the book. Approve ideas that carry an insight, reflection, emotional \
+weight, or thought-provoking perspective. Reject the rest.
 
-Only REJECT items that clearly are NOT ideas:
+REJECT items that fall into these categories:
 - Vocabulary lookups or word definitions noted for personal reference
-- Character name references noted just as personal memory aids ("who is X")
+- Character name references or relationship notes ("X is Y's friend", "X likes Y")
+- Mundane character descriptions, gossip, or trivial personal observations about \
+characters that carry no deeper meaning
 - Purely structural or navigation notes ("see chapter 5", "continue on page 42")
 - Trivially short fragments with no substance (single words, page numbers only)
+- Routine plot events or personal diary-like entries with no broader meaning
+- Passages that only make sense with heavy surrounding context and couldn't stand \
+alone even with editing
 
-APPROVE everything else. Ideas that seem incomplete or vague on their own may still \
-be valuable — nearby highlights from the same source can complement each other, and \
-later pipeline stages will refine and glue things together.
+APPROVE items that have at least one of:
+- A genuine insight, reflection, or opinion worth sharing
+- Emotional resonance or a universal theme readers would connect with
+- A striking or memorable quote from the author
+- Historical facts, curiosities, or moments that make this book culturally relevant \
+or that would be catchy for social media
+- A thought-provoking observation, even if brief or incomplete — later pipeline \
+stages will refine it
 
+When in doubt, lean toward approving — but don't approve everything just to be safe.
+{volume_warning}
 For each rejected item, provide a brief rejection_reason.
 
 Input ideas (JSON array):
@@ -197,9 +211,14 @@ Input ideas (JSON array):
 Return ONLY a JSON array (no markdown fences, no extra text). Example:
 [
   {{"id": 1, "decision": "approve"}},
-  {{"id": 2, "decision": "reject", "rejection_reason": "vocabulary lookup, not an idea"}}
+  {{"id": 2, "decision": "reject", "rejection_reason": "character gossip, no insight"}}
 ]
 """
+
+_VOLUME_WARNING = """\
+IMPORTANT: This book has {total_ideas} total highlights, which is a lot. Be more \
+selective — if you approve nearly everything, the pipeline becomes unmanageable. \
+Only approve highlights that genuinely stand out. It's OK to reject a majority."""
 
 
 def triage_ideas_with_llm(
@@ -207,6 +226,7 @@ def triage_ideas_with_llm(
     book_title: str,
     book_author: str,
     ideas: list[Idea],
+    total_ideas: int | None = None,
     max_input_tokens: int = 7500,
     min_interval: int = 10,
 ) -> list[TriageDecision]:
@@ -225,10 +245,16 @@ def triage_ideas_with_llm(
         ensure_ascii=False,
     )
 
+    volume_warning = ""
+    effective_total = total_ideas or len(ideas)
+    if effective_total > 100:
+        volume_warning = _VOLUME_WARNING.format(total_ideas=effective_total)
+
     prompt = _TRIAGE_PROMPT_TEMPLATE.format(
         book_title=book_title,
         book_author=book_author,
         ideas_json=ideas_json,
+        volume_warning=volume_warning,
     )
 
     max_chars = max_input_tokens * _CHARS_PER_TOKEN

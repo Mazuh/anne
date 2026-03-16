@@ -55,13 +55,11 @@ anne sources list o-principe
 # requires Gemini API key (prompted during bootstrap, or set ANNE_GEMINI_API_KEY env var)
 anne idea-parse o-principe
 
-# parse all books at once
+# parse all books at once, the book slug is optional
 anne idea-parse
 
-# triage parsed ideas: approve or reject using LLM (lenient first pass)
-anne curation-triage o-principe
-
-# triage all books at once
+# triage parsed ideas: approve or reject using LLM (lenient first pass),
+# optionally book sug can be specified
 anne curation-triage
 ```
 

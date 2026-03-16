@@ -3,17 +3,28 @@ from pathlib import Path
 
 import typer
 from rich import print as rprint
+from rich.markup import escape
 
 from anne.config.settings import load_settings
 from anne.db.connection import get_connection
-from anne.models import Book, Source, SourceType
+from anne.models import Book, Idea, IdeaStatus, Source, SourceType
 from anne.services.books import get_book, list_books
-from anne.models import IdeaStatus
 from anne.services.ideas import approve_idea, get_ideas_by_status, get_unparsed_sources, insert_ideas, reject_idea
 from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
 from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm
 
 LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
+
+_MAX_PREVIEW_LEN = 80
+
+
+def _idea_preview(idea: Idea) -> str:
+    text = idea.raw_quote or idea.raw_note
+    if not text:
+        return ""
+    label = "Quote" if idea.raw_quote else "Comment"
+    truncated = text[:_MAX_PREVIEW_LEN] + "..." if len(text) > _MAX_PREVIEW_LEN else text
+    return f' — {label}: "{escape(truncated)}"'
 
 
 def _parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:
@@ -143,14 +154,18 @@ def curation_triage(
                         book_title=book.title,
                         book_author=book.author,
                         ideas=chunk,
+                        total_ideas=len(parsed_ideas),
                         max_input_tokens=settings.max_llm_input_tokens,
                         min_interval=settings.llm_call_interval,
                     )
+                    ideas_by_id = {idea.id: idea for idea in chunk}
                     for d in decisions:
+                        idea = ideas_by_id.get(d.idea_id)
                         if d.decision == "approve":
                             approve_idea(conn, d.idea_id)
                             total_approved += 1
-                            rprint(f"  [green]Approved[/green] idea {d.idea_id}")
+                            preview = _idea_preview(idea) if idea else ""
+                            rprint(f"  [green]Approved[/green] idea {d.idea_id}{preview}")
                         elif d.decision == "reject":
                             reject_idea(conn, d.idea_id, d.rejection_reason)
                             total_rejected += 1
