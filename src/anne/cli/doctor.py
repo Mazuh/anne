@@ -1,5 +1,7 @@
+import os
 import shutil
 import sys
+from pathlib import Path
 
 import typer
 from rich import print as rprint
@@ -61,8 +63,31 @@ def doctor() -> None:
         rprint(f"[red]\u2717[/red] Books directory missing: {settings.books_dir}")
         ok = False
 
+    # Shell alias
+    from anne.cli.bootstrap import PROJECT_DIR
+
+    shell = os.environ.get("SHELL", "")
+    if "zsh" in shell:
+        rc_file = "~/.zshrc"
+    elif "bash" in shell:
+        rc_file = "~/.bashrc"
+    else:
+        rc_file = "your shell config"
+
+    alias_line = f'alias anne="uv run --project {PROJECT_DIR} anne"'
+    alias_configured = False
+    rc_path = Path(rc_file).expanduser()
+    if rc_path.exists() and alias_line in rc_path.read_text():
+        rprint("[green]\u2713[/green] Shell alias configured")
+        alias_configured = True
+    else:
+        rprint(f"[yellow]![/yellow] Shell alias not found in {rc_file}")
+
     if ok:
         rprint("\n[green]All checks passed![/green]")
+        if not alias_configured:
+            rprint(f"\n[dim]Tip: to make [bold]anne[/bold] available globally, add to {rc_file}:[/dim]")
+            rprint(f"[dim]  {alias_line}[/dim]")
     else:
         rprint("\n[red]Some checks failed.[/red] Run [bold]anne bootstrap[/bold] to initialize.")
         raise typer.Exit(code=1)

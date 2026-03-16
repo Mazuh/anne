@@ -30,20 +30,24 @@ source .venv/bin/activate
 # initialize workspace (creates directories and database)
 uv run anne bootstrap
 
+# a hint will show up to make "anne" command globally available as a shell alias,
+# the commands above will assume you did it and restarted the shell
+# (otherwise keep in this same directory and using the full "uv run anne")
+
 # check workspace health
-uv run anne doctor
+anne doctor
 
 # add a book
-uv run anne books add "O Príncipe" --author "Maquiavel"
+anne books add "O Príncipe" --author "Maquiavel"
 
 # list books
-uv run anne books list
+anne books list
 
 # import a source file
-uv run anne sources import o-principe ~/path/to/highlights.html
+anne sources import o-principe ~/path/to/highlights.html
 
 # list sources for a book
-uv run anne sources list o-principe
+anne sources list o-principe
 ```
 
 More pipeline commands (idea parsing, curation, review, media generation) are coming in future phases.

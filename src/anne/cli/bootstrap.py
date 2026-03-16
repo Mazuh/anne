@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import typer
@@ -5,6 +6,21 @@ from rich import print as rprint
 
 from anne.config.settings import Settings, save_settings
 from anne.db.migrate import apply_schema
+
+PROJECT_DIR = Path(__file__).resolve().parents[3]
+
+
+def _print_shell_hint() -> None:
+    shell = os.environ.get("SHELL", "")
+    if "zsh" in shell:
+        rc_file = "~/.zshrc"
+    elif "bash" in shell:
+        rc_file = "~/.bashrc"
+    else:
+        rc_file = "your shell config"
+
+    rprint(f"\n[dim]Tip: to make [bold]anne[/bold] available globally, add to {rc_file}:[/dim]")
+    rprint(f'[dim]  alias anne="uv run --project {PROJECT_DIR} anne"[/dim]')
 
 
 def bootstrap() -> None:
@@ -31,3 +47,5 @@ def bootstrap() -> None:
     rprint(f"  Books:    {settings.books_dir}")
     rprint(f"  Config:   {settings.root_dir}")
     rprint("\n[green]Bootstrap complete![/green] Run [bold]anne doctor[/bold] to verify.")
+
+    _print_shell_hint()
