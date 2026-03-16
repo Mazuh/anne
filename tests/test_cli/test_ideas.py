@@ -11,7 +11,9 @@ from anne.db.connection import get_connection
 from anne.db.migrate import apply_schema
 from anne.models import SourceType
 from anne.services.books import create_book
+from anne.services.ideas import insert_ideas
 from anne.services.sources import import_source
+from anne.services.parsers import ParsedIdea
 import anne.services.llm as llm_module
 
 
@@ -126,3 +128,137 @@ def test_idea_parse_all_books(tmp_settings: Settings):
         result = runner.invoke(app, ["idea-parse"])
     assert result.exit_code == 0
     assert "1 idea extracted" in result.output
+
+
+# --- curation-triage tests ---
+
+
+def _setup_book_with_parsed_ideas(tmp_settings: Settings) -> None:
+    """Create a book with parsed ideas in the DB."""
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        book = create_book(conn, "Test Book", "Author")
+        source = import_source(
+            conn, book.id, SourceType.kindle_export_html, "sources/kindle/notes.html", "fp1"
+        )
+        insert_ideas(conn, book.id, source.id, [
+            ParsedIdea(raw_quote="A great insight about the world"),
+            ParsedIdea(raw_note="ephemeral vocab word"),
+            ParsedIdea(raw_quote="Another good idea", raw_note="With a note"),
+        ])
+
+
+def _mock_triage_response(decisions: list[dict]) -> MagicMock:
+    body = {
+        "candidates": [
+            {"content": {"parts": [{"text": json.dumps(decisions)}]}}
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(body).encode()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
+
+
+def test_curation_triage_approves_and_rejects(tmp_settings: Settings):
+    _setup_book_with_parsed_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    # Get actual idea IDs from DB
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp = _mock_triage_response([
+        {"id": idea_ids[0], "decision": "approve"},
+        {"id": idea_ids[1], "decision": "reject", "rejection_reason": "vocab lookup"},
+        {"id": idea_ids[2], "decision": "approve"},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["curation-triage", "test-book"])
+    assert result.exit_code == 0
+    assert "Approved" in result.output
+    assert "Rejected" in result.output
+    assert "vocab lookup" in result.output
+    assert "2 approved, 1 rejected" in result.output
+
+    # Verify DB state
+    with get_connection(tmp_settings.db_path) as conn:
+        row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
+        assert row["status"] == "approved"
+        row = conn.execute("SELECT status, rejection_reason FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
+        assert row["status"] == "rejected"
+        assert row["rejection_reason"] == "vocab lookup"
+
+
+def test_curation_triage_no_parsed_ideas(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        create_book(conn, "Empty Book", "Author")
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["curation-triage", "empty-book"])
+    assert result.exit_code == 0
+    assert "no parsed ideas" in result.output
+
+
+def test_curation_triage_book_not_found(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["curation-triage", "nonexistent"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_curation_triage_missing_api_key(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
+    with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
+        result = runner.invoke(app, ["curation-triage"])
+    assert result.exit_code == 1
+    assert "gemini_api_key" in result.output
+
+
+def test_curation_triage_all_books(tmp_settings: Settings):
+    _setup_book_with_parsed_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp = _mock_triage_response([
+        {"id": idea_ids[0], "decision": "approve"},
+        {"id": idea_ids[1], "decision": "approve"},
+        {"id": idea_ids[2], "decision": "approve"},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["curation-triage"])
+    assert result.exit_code == 0
+    assert "3 approved, 0 rejected" in result.output
+
+
+def test_curation_triage_rate_limited(tmp_settings: Settings):
+    _setup_book_with_parsed_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    from anne.services.llm import RateLimitError
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.cli.ideas.triage_ideas_with_llm", side_effect=RateLimitError("rate limited")),
+    ):
+        result = runner.invoke(app, ["curation-triage", "test-book"])
+    assert result.exit_code == 1
+    assert "Rate limited" in result.output
+    assert "Progress so far has been saved" in result.output

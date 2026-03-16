@@ -57,9 +57,15 @@ anne idea-parse o-principe
 
 # parse all books at once
 anne idea-parse
+
+# triage parsed ideas: approve or reject using LLM (lenient first pass)
+anne curation-triage o-principe
+
+# triage all books at once
+anne curation-triage
 ```
 
-More pipeline commands (curation, review, media generation) are coming in future phases.
+More pipeline commands (review, media generation) are coming in future phases.
 
 ## Planning
 
@@ -68,8 +74,8 @@ and as optional context for motivations behind it we have /Users/mazuh/Downloads
 
 ```
   - ✅ DONE Phase 1 — Foundation + Books + Import
-  - ✅ DONE Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)                                                      
-  - Phase 3 — Curation triage (approve/reject ideas, LLM-assisted or manual, rejection reasons)                                                                                              
+  - ✅ DONE Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)
+  - ✅ DONE Phase 3 — Curation triage (approve/reject ideas via LLM, lenient first pass, configurable chunking)                                                                                              
   - Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)                                                                     
   - Phase 5 — Curation presentation (caption/presentation text generation, tags)                                                                                                             
   - Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)                                                                                                   

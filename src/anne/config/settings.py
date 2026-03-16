@@ -11,6 +11,8 @@ class Settings(BaseModel):
     root_dir: Path = Path.home() / "Documents" / "anne"
     gemini_api_key: str | None = None
     max_llm_input_tokens: int = 7500
+    llm_call_interval: int = 10
+    triage_chunk_size: int = 25
 
     @property
     def db_path(self) -> Path:

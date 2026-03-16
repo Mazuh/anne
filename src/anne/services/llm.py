@@ -1,12 +1,18 @@
 import json
+import logging
 import re
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
+from typing import Literal
 
 from rich import print as rprint
 
+from anne.models import Idea
 from anne.services.parsers import ParsedIdea
+
+logger = logging.getLogger(__name__)
 
 GEMINI_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/"
@@ -28,13 +34,13 @@ class ContentTooLargeError(Exception):
     """Raised when input content exceeds the configured token limit."""
 
 
-def generate(api_key: str, prompt: str) -> str:
+def generate(api_key: str, prompt: str, min_interval: int = _MIN_INTERVAL) -> str:
     """Send prompt to Gemini, return text response. Retries on 429/5xx."""
     global _last_call_time
     now = time.monotonic()
     elapsed = now - _last_call_time
-    if _last_call_time > 0 and elapsed < _MIN_INTERVAL:
-        wait = _MIN_INTERVAL - elapsed
+    if _last_call_time > 0 and elapsed < min_interval:
+        wait = min_interval - elapsed
         rprint(f"  [dim]Waiting {int(wait)}s before next API call...[/dim]")
         time.sleep(wait)
 
@@ -157,3 +163,119 @@ def parse_essay_with_llm(api_key: str, content: str, max_input_tokens: int = _DE
         if idea.raw_quote or idea.raw_note:
             ideas.append(idea)
     return ideas
+
+
+@dataclass
+class TriageDecision:
+    idea_id: int
+    decision: Literal["approve", "reject"]
+    rejection_reason: str | None = None
+
+
+_TRIAGE_PROMPT_TEMPLATE = """\
+You are an assistant that triages reading highlights/notes from the book \
+"{book_title}" by {book_author}.
+
+Your task is a LENIENT first pass: approve by default, only reject the obviously \
+irrelevant stuff. When in doubt, APPROVE.
+
+Only REJECT items that clearly are NOT ideas:
+- Vocabulary lookups or word definitions noted for personal reference
+- Character name references noted just as personal memory aids ("who is X")
+- Purely structural or navigation notes ("see chapter 5", "continue on page 42")
+- Trivially short fragments with no substance (single words, page numbers only)
+
+APPROVE everything else. Ideas that seem incomplete or vague on their own may still \
+be valuable — nearby highlights from the same source can complement each other, and \
+later pipeline stages will refine and glue things together.
+
+For each rejected item, provide a brief rejection_reason.
+
+Input ideas (JSON array):
+{ideas_json}
+
+Return ONLY a JSON array (no markdown fences, no extra text). Example:
+[
+  {{"id": 1, "decision": "approve"}},
+  {{"id": 2, "decision": "reject", "rejection_reason": "vocabulary lookup, not an idea"}}
+]
+"""
+
+
+def triage_ideas_with_llm(
+    api_key: str,
+    book_title: str,
+    book_author: str,
+    ideas: list[Idea],
+    max_input_tokens: int = 7500,
+    min_interval: int = 10,
+) -> list[TriageDecision]:
+    """Triage parsed ideas using Gemini. Returns list of approve/reject decisions."""
+    valid_ids = {idea.id for idea in ideas}
+    ideas_json = json.dumps(
+        [
+            {
+                "id": idea.id,
+                "raw_quote": idea.raw_quote,
+                "raw_note": idea.raw_note,
+                "raw_ref": idea.raw_ref,
+            }
+            for idea in ideas
+        ],
+        ensure_ascii=False,
+    )
+
+    prompt = _TRIAGE_PROMPT_TEMPLATE.format(
+        book_title=book_title,
+        book_author=book_author,
+        ideas_json=ideas_json,
+    )
+
+    max_chars = max_input_tokens * _CHARS_PER_TOKEN
+    if len(prompt) > max_chars:
+        raise ContentTooLargeError(
+            f"Triage prompt too large ({len(prompt):,} chars, estimated ~{len(prompt) // 3:,} tokens). "
+            f"Max allowed: ~{max_input_tokens:,} tokens. "
+            f"Try reducing triage_chunk_size in config."
+        )
+
+    response_text = generate(api_key, prompt, min_interval=min_interval)
+
+    try:
+        items = json.loads(response_text)
+    except json.JSONDecodeError:
+        match = re.search(r"\[.*\]", response_text, re.DOTALL)
+        if match:
+            items = json.loads(match.group())
+        else:
+            raise ValueError(f"Could not parse triage LLM response as JSON: {response_text[:200]}")
+
+    decisions: list[TriageDecision] = []
+    seen_ids: set[int] = set()
+    for item in items:
+        idea_id = item.get("id")
+        decision = str(item.get("decision", "")).lower()
+        if idea_id not in valid_ids:
+            logger.warning("Triage: skipping unknown idea id %s", idea_id)
+            continue
+        if idea_id in seen_ids:
+            logger.warning("Triage: skipping duplicate idea id %s", idea_id)
+            continue
+        if decision not in ("approve", "reject"):
+            logger.warning("Triage: skipping invalid decision '%s' for idea %s", decision, idea_id)
+            continue
+        seen_ids.add(idea_id)
+        decisions.append(
+            TriageDecision(
+                idea_id=idea_id,
+                decision=decision,
+                rejection_reason=item.get("rejection_reason") if decision == "reject" else None,
+            )
+        )
+    # Default omitted ideas to approve (lenient triage: when in doubt, approve)
+    missing_ids = valid_ids - seen_ids
+    if missing_ids:
+        logger.warning("Triage: LLM omitted %d idea(s), defaulting to approve: %s", len(missing_ids), missing_ids)
+        for idea_id in sorted(missing_ids):
+            decisions.append(TriageDecision(idea_id=idea_id, decision="approve"))
+    return decisions

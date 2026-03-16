@@ -1,12 +1,18 @@
 import sqlite3
 
+import pytest
+
 from anne.services.books import create_book
 from anne.services.ideas import (
+    approve_idea,
+    get_ideas_by_status,
     get_unparsed_sources,
     insert_ideas,
     is_source_parsed,
     list_ideas,
+    reject_idea,
 )
+from anne.models import IdeaStatus
 from anne.services.parsers import ParsedIdea
 from anne.services.sources import import_source
 from anne.models import SourceType
@@ -76,3 +82,66 @@ def test_list_ideas(tmp_db: sqlite3.Connection):
     ])
     ideas = list_ideas(tmp_db, book.id)
     assert len(ideas) == 2
+
+
+def test_get_ideas_by_status(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(tmp_db, book.id, source.id, [
+        ParsedIdea(raw_quote="Q1"),
+        ParsedIdea(raw_note="N2"),
+    ])
+    parsed = get_ideas_by_status(tmp_db, book.id, IdeaStatus.parsed)
+    assert len(parsed) == 2
+    approved = get_ideas_by_status(tmp_db, book.id, IdeaStatus.approved)
+    assert len(approved) == 0
+
+
+def test_get_ideas_by_status_empty(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    result = get_ideas_by_status(tmp_db, book.id, IdeaStatus.parsed)
+    assert result == []
+
+
+def test_approve_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    original_updated = ideas[0].updated_at
+
+    approved = approve_idea(tmp_db, ideas[0].id)
+    assert approved.status == IdeaStatus.approved
+    assert approved.updated_at >= original_updated
+
+
+def test_reject_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+
+    rejected = reject_idea(tmp_db, ideas[0].id, "just a vocab word")
+    assert rejected.status == IdeaStatus.rejected
+    assert rejected.rejection_reason == "just a vocab word"
+
+
+def test_reject_idea_not_found(tmp_db: sqlite3.Connection):
+    with pytest.raises(ValueError, match="Idea not found"):
+        reject_idea(tmp_db, 9999, "reason")
+
+
+def test_approve_idea_not_found(tmp_db: sqlite3.Connection):
+    with pytest.raises(ValueError, match="Idea not found"):
+        approve_idea(tmp_db, 9999)
+
+
+def test_approve_idea_already_rejected(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    reject_idea(tmp_db, ideas[0].id, "test")
+    with pytest.raises(ValueError, match="not in parsed status"):
+        approve_idea(tmp_db, ideas[0].id)
+
+
+def test_reject_idea_already_approved(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    approve_idea(tmp_db, ideas[0].id)
+    with pytest.raises(ValueError, match="not in parsed status"):
+        reject_idea(tmp_db, ideas[0].id, "too late")

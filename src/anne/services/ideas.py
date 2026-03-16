@@ -1,6 +1,6 @@
 import sqlite3
 
-from anne.models import Idea, Source
+from anne.models import Idea, IdeaStatus, Source
 from anne.services.parsers import ParsedIdea
 
 
@@ -47,3 +47,37 @@ def list_ideas(conn: sqlite3.Connection, book_id: int) -> list[Idea]:
         "SELECT * FROM ideas WHERE book_id = ? ORDER BY id", (book_id,)
     ).fetchall()
     return [Idea(**dict(r)) for r in rows]
+
+
+def get_ideas_by_status(
+    conn: sqlite3.Connection, book_id: int, status: IdeaStatus
+) -> list[Idea]:
+    rows = conn.execute(
+        "SELECT * FROM ideas WHERE book_id = ? AND status = ? ORDER BY id",
+        (book_id, status),
+    ).fetchall()
+    return [Idea(**dict(r)) for r in rows]
+
+
+def approve_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
+    cursor = conn.execute(
+        "UPDATE ideas SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = ?",
+        (IdeaStatus.approved, idea_id, IdeaStatus.parsed),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Idea not found or not in parsed status: {idea_id}")
+    row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    return Idea(**dict(row))
+
+
+def reject_idea(
+    conn: sqlite3.Connection, idea_id: int, rejection_reason: str | None
+) -> Idea:
+    cursor = conn.execute(
+        "UPDATE ideas SET status = ?, rejection_reason = ?, updated_at = datetime('now') WHERE id = ? AND status = ?",
+        (IdeaStatus.rejected, rejection_reason, idea_id, IdeaStatus.parsed),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Idea not found or not in parsed status: {idea_id}")
+    row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    return Idea(**dict(row))
