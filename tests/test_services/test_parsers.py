@@ -1,4 +1,4 @@
-from anne.services.parsers import ParsedIdea, parse_kindle_export_html
+from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
 
 
 KINDLE_BASIC = """
@@ -83,3 +83,57 @@ def test_kindle_multiple_entries():
     # Third: standalone note
     assert ideas[2].raw_quote is None
     assert ideas[2].raw_note == "Standalone note here."
+
+
+def test_extract_html_content_with_known_container():
+    html = """
+    <html><head><style>body{color:red}</style></head><body>
+    <nav>Menu stuff</nav>
+    <div class="body markup">
+        <h2>Section Title</h2>
+        <p>Paragraph one.</p>
+        <blockquote>A direct quote.</blockquote>
+        <p>Paragraph two.</p>
+        <script>alert('nope')</script>
+    </div>
+    <footer>Footer junk</footer>
+    </body></html>
+    """
+    text = extract_html_content(html)
+    assert "## Section Title" in text
+    assert "Paragraph one." in text
+    assert "> A direct quote." in text
+    assert "Paragraph two." in text
+    assert "Menu stuff" not in text
+    assert "Footer junk" not in text
+    assert "alert" not in text
+    assert "color:red" not in text
+
+
+def test_extract_html_content_with_void_tags():
+    html = """
+    <div class="body markup">
+        <p>Before image.</p>
+        <img src="photo.jpg">
+        <br>
+        <hr>
+        <p>After image.</p>
+    </div>
+    """
+    text = extract_html_content(html)
+    assert "Before image." in text
+    assert "After image." in text
+
+
+def test_extract_html_content_fallback():
+    html = "<html><body><script>var x=1;</script><p>Hello world</p></body></html>"
+    text = extract_html_content(html)
+    assert "Hello world" in text
+    assert "var x" not in text
+
+
+def test_extract_html_content_fallback_bare_text():
+    html = "<html><body><script>var x=1;</script>Just bare text here</body></html>"
+    text = extract_html_content(html)
+    assert "Just bare text" in text
+    assert "var x" not in text

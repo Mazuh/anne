@@ -1,4 +1,3 @@
-import re
 import sqlite3
 from pathlib import Path
 
@@ -10,15 +9,13 @@ from anne.db.connection import get_connection
 from anne.models import Book, Source, SourceType
 from anne.services.books import get_book, list_books
 from anne.services.ideas import get_unparsed_sources, insert_ideas
-from anne.services.parsers import ParsedIdea, parse_kindle_export_html
-from anne.services.llm import RateLimitError, parse_essay_with_llm
+from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
+from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm
 
 LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
 
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
-
-def _parse_source(source: Source, content: str, api_key: str | None) -> list[ParsedIdea]:
+def _parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:
     source_type = SourceType(source.type)
     if source_type == SourceType.kindle_export_html:
         return parse_kindle_export_html(content)
@@ -26,8 +23,8 @@ def _parse_source(source: Source, content: str, api_key: str | None) -> list[Par
         if not api_key:
             raise ValueError("gemini_api_key is required for LLM-assisted parsing")
         if source_type == SourceType.essay_html:
-            content = _HTML_TAG_RE.sub("", content)
-        return parse_essay_with_llm(api_key, content)
+            content = extract_html_content(content)
+        return parse_essay_with_llm(api_key, content, max_input_tokens=max_input_tokens)
     else:
         rprint(f"  [yellow]Warning:[/yellow] unknown source type '{source_type}', skipping")
         return []
@@ -38,6 +35,7 @@ def _parse_book(
     books_dir: Path,
     api_key: str | None,
     conn: sqlite3.Connection,
+    max_input_tokens: int,
 ) -> int:
     sources = get_unparsed_sources(conn, book.id)
     if not sources:
@@ -57,7 +55,7 @@ def _parse_book(
             continue
         rprint(f"  Parsing [cyan]{source.path}[/cyan]...")
         content = source_path.read_text(encoding="utf-8")
-        ideas = _parse_source(source, content, api_key)
+        ideas = _parse_source(source, content, api_key, max_input_tokens=max_input_tokens)
         if ideas:
             insert_ideas(conn, book.id, source.id, ideas)
         label = "idea" if len(ideas) == 1 else "ideas"
@@ -88,10 +86,15 @@ def idea_parse(
         rprint(f"[bold]{book.title}[/bold]")
         try:
             with get_connection(settings.db_path) as conn:
-                grand_total += _parse_book(book, settings.books_dir, api_key, conn)
-        except RateLimitError:
+                grand_total += _parse_book(book, settings.books_dir, api_key, conn, settings.max_llm_input_tokens)
+        except RateLimitError as e:
             rprint(f"  [red]Rate limited by Gemini API.[/red] Progress so far has been saved.")
+            if str(e):
+                rprint(f"  [dim]{e}[/dim]")
             rprint(f"  [dim]Wait a minute and run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
+        except ContentTooLargeError as e:
+            rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 
     rprint(f"\n[bold]Total: {grand_total} ideas parsed[/bold]")

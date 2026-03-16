@@ -10,6 +10,7 @@ CONFIG_PATH = Path.home() / ".config" / "anne" / "config.yaml"
 class Settings(BaseModel):
     root_dir: Path = Path.home() / "Documents" / "anne"
     gemini_api_key: str | None = None
+    max_llm_input_tokens: int = 7500
 
     @property
     def db_path(self) -> Path:

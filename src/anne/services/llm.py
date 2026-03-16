@@ -24,6 +24,10 @@ class RateLimitError(Exception):
     """Raised when the Gemini API returns 429 after all retries."""
 
 
+class ContentTooLargeError(Exception):
+    """Raised when input content exceeds the configured token limit."""
+
+
 def generate(api_key: str, prompt: str) -> str:
     """Send prompt to Gemini, return text response. Retries on 429/5xx."""
     global _last_call_time
@@ -53,6 +57,13 @@ def generate(api_key: str, prompt: str) -> str:
             _last_call_time = time.monotonic()
             break
         except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                # e.read() consumes the response body, so it's only available once
+                err_body = json.loads(e.read())
+                detail = err_body.get("error", {}).get("message", "")
+            except Exception:
+                pass
             if e.code == 429:
                 if attempt < _MAX_RETRIES - 1:
                     wait = _INITIAL_BACKOFF * (2 ** attempt)
@@ -60,7 +71,7 @@ def generate(api_key: str, prompt: str) -> str:
                     time.sleep(wait)
                     continue
                 raise RateLimitError(
-                    "Gemini API rate limit exceeded after retries. "
+                    detail or "Gemini API rate limit exceeded after retries. "
                     "Wait a minute and try again."
                 ) from e
             if e.code in (500, 502, 503) and attempt < _MAX_RETRIES - 1:
@@ -108,8 +119,20 @@ Return ONLY a JSON array (no markdown fences, no extra text). Example:
 """
 
 
-def parse_essay_with_llm(api_key: str, content: str) -> list[ParsedIdea]:
+_DEFAULT_MAX_INPUT_TOKENS = 7500
+# Rough estimate: 1 token ≈ 3 chars for Portuguese text
+_CHARS_PER_TOKEN = 3
+
+
+def parse_essay_with_llm(api_key: str, content: str, max_input_tokens: int = _DEFAULT_MAX_INPUT_TOKENS) -> list[ParsedIdea]:
     """Extract ideas from essay content using Gemini."""
+    max_chars = max_input_tokens * _CHARS_PER_TOKEN
+    if len(content) > max_chars:
+        raise ContentTooLargeError(
+            f"Content too large ({len(content):,} chars, estimated ~{len(content) // 3:,} tokens). "
+            f"Max allowed: ~{max_input_tokens:,} tokens. "
+            f"Adjust max_llm_input_tokens in config or clean the source before import."
+        )
     prompt = _ESSAY_PROMPT_TEMPLATE.format(content=content)
     response_text = generate(api_key, prompt)
 
