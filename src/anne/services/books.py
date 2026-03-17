@@ -36,6 +36,18 @@ def get_book(conn: sqlite3.Connection, slug: str) -> Book | None:
     return Book(**dict(row))
 
 
+def get_book_by_id(conn: sqlite3.Connection, book_id: int) -> Book | None:
+    row = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
+    if row is None:
+        return None
+    return Book(**dict(row))
+
+
+def get_book_titles(conn: sqlite3.Connection) -> dict[int, str]:
+    rows = conn.execute("SELECT id, title FROM books").fetchall()
+    return {r["id"]: r["title"] for r in rows}
+
+
 def get_book_stats(conn: sqlite3.Connection, book_id: int) -> dict:
     source_count = conn.execute(
         "SELECT COUNT(*) FROM sources WHERE book_id = ?", (book_id,)

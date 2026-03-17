@@ -83,6 +83,13 @@ def fetch_url(url: str, dest_dir: Path) -> Path:
     return dest
 
 
+def get_source(conn: sqlite3.Connection, source_id: int) -> Source | None:
+    row = conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
+    if row is None:
+        return None
+    return Source(**dict(row))
+
+
 def list_sources(conn: sqlite3.Connection, book_id: int) -> list[Source]:
     rows = conn.execute(
         "SELECT * FROM sources WHERE book_id = ? ORDER BY imported_at DESC",

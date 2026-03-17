@@ -87,6 +87,17 @@ Generate Instagram captions for reviewed ideas using LLM:
 anne idea-caption
 ```
 
+### Browsing and editing ideas
+
+List, view, and edit ideas without raw SQL:
+
+```sh
+anne ideas list o-principe --status triaged --page 1 --per-page 25
+anne ideas show 42
+anne ideas edit 42 --status reviewed --force
+anne ideas edit 42 --reviewed-quote "New text" --tags '["poder"]'
+```
+
 More pipeline commands (asset matching, media generation) are coming in future phases.
 
 ## Planning

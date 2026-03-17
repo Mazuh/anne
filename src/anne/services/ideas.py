@@ -138,3 +138,129 @@ def reject_idea(
         raise ValueError(f"Idea not found or not in parsed status: {idea_id}")
     row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
     return Idea(**dict(row))
+
+
+def get_idea(conn: sqlite3.Connection, idea_id: int) -> Idea | None:
+    row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    if row is None:
+        return None
+    return Idea(**dict(row))
+
+
+def count_ideas(
+    conn: sqlite3.Connection, book_id: int | None = None, status: IdeaStatus | None = None
+) -> int:
+    query = "SELECT COUNT(*) FROM ideas"
+    conditions: list[str] = []
+    params: list[object] = []
+    if book_id is not None:
+        conditions.append("book_id = ?")
+        params.append(book_id)
+    if status is not None:
+        conditions.append("status = ?")
+        params.append(status.value)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    row = conn.execute(query, params).fetchone()
+    return row[0]
+
+
+def list_ideas_paginated(
+    conn: sqlite3.Connection,
+    book_id: int | None = None,
+    status: IdeaStatus | None = None,
+    page: int = 1,
+    per_page: int = 25,
+) -> list[Idea]:
+    query = "SELECT * FROM ideas"
+    conditions: list[str] = []
+    params: list[object] = []
+    if book_id is not None:
+        conditions.append("book_id = ?")
+        params.append(book_id)
+    if status is not None:
+        conditions.append("status = ?")
+        params.append(status.value)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY id"
+    offset = (page - 1) * per_page
+    query += " LIMIT ? OFFSET ?"
+    params.extend([per_page, offset])
+    rows = conn.execute(query, params).fetchall()
+    return [Idea(**dict(r)) for r in rows]
+
+
+# Valid forward transitions (without --force)
+_VALID_TRANSITIONS: dict[IdeaStatus, set[IdeaStatus]] = {
+    IdeaStatus.parsed: {IdeaStatus.triaged, IdeaStatus.rejected},
+    IdeaStatus.rejected: {IdeaStatus.parsed},
+    IdeaStatus.triaged: {IdeaStatus.reviewed, IdeaStatus.rejected},
+    IdeaStatus.reviewed: {IdeaStatus.ready, IdeaStatus.rejected},
+    IdeaStatus.ready: set(),
+}
+
+# Fields allowed in update_idea
+_UPDATABLE_FIELDS: set[str] = {
+    "status",
+    "raw_quote",
+    "raw_note",
+    "reviewed_quote",
+    "reviewed_quote_emphasis",
+    "reviewed_comment",
+    "presentation_text",
+    "rejection_reason",
+    "tags",
+}
+
+
+def update_idea(
+    conn: sqlite3.Connection, idea_id: int, force: bool = False, **fields: object
+) -> Idea:
+    idea = get_idea(conn, idea_id)
+    if idea is None:
+        raise ValueError(f"Idea not found: {idea_id}")
+
+    invalid = set(fields) - _UPDATABLE_FIELDS
+    if invalid:
+        raise ValueError(f"Invalid fields: {', '.join(sorted(invalid))}")
+
+    if "status" in fields:
+        new_status = IdeaStatus(str(fields["status"]))
+        if not force:
+            current = IdeaStatus(idea.status)
+            allowed = _VALID_TRANSITIONS.get(current, set())
+            if new_status not in allowed:
+                raise ValueError(
+                    f"Invalid status transition: {current} → {new_status} "
+                    f"(allowed: {', '.join(sorted(s.value for s in allowed)) or 'none'}). "
+                    f"Use --force to override."
+                )
+
+    if "tags" in fields:
+        tags_val = fields["tags"]
+        try:
+            parsed = json.loads(str(tags_val))
+            if not isinstance(parsed, list):
+                raise ValueError("tags must be a JSON array")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"tags must be valid JSON: {e}") from e
+
+    set_clauses = []
+    params: list[object] = []
+    for field, value in fields.items():
+        assert field in _UPDATABLE_FIELDS, f"unexpected field: {field}"
+        set_clauses.append(f"{field} = ?")
+        params.append(value)
+    set_clauses.append("updated_at = datetime('now')")
+    params.append(idea_id)
+
+    conn.execute(
+        f"UPDATE ideas SET {', '.join(set_clauses)} WHERE id = ?",
+        params,
+    )
+
+    updated = get_idea(conn, idea_id)
+    if updated is None:
+        raise ValueError(f"Idea not found after update: {idea_id}")
+    return updated

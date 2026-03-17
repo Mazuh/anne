@@ -1,20 +1,39 @@
 import json
-import sqlite3
+import math
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich import print as rprint
+from rich.console import Console
 from rich.markup import escape
+from rich.table import Table
 
 from anne.config.settings import load_settings
 from anne.db.connection import get_connection
 from anne.models import Book, Idea, IdeaStatus, Source, SourceType
-from anne.services.books import get_book, list_books
-from anne.services.ideas import triage_approve_idea, caption_idea, get_ideas_by_status, get_unparsed_sources, insert_ideas, reject_idea, review_idea
+from anne.services.books import get_book, get_book_by_id, get_book_titles, list_books
+from anne.services.sources import get_source
+from anne.services.ideas import (
+    triage_approve_idea,
+    caption_idea,
+    count_ideas,
+    get_idea,
+    get_ideas_by_status,
+    get_unparsed_sources,
+    insert_ideas,
+    list_ideas_paginated,
+    reject_idea,
+    review_idea,
+    update_idea,
+)
 from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
 from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm
 
 LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
+
+ideas_app = typer.Typer(help="Browse and manage ideas.")
+console = Console()
 
 _MAX_PREVIEW_LEN = 80
 
@@ -26,6 +45,189 @@ def _idea_preview(idea: Idea) -> str:
     label = "Quote" if idea.raw_quote else "Comment"
     truncated = text[:_MAX_PREVIEW_LEN] + "..." if len(text) > _MAX_PREVIEW_LEN else text
     return f' — {label}: "{escape(truncated)}"'
+
+
+_LIST_PREVIEW_LEN = 60
+
+
+def _truncate(text: str | None, length: int = _LIST_PREVIEW_LEN) -> str:
+    if not text:
+        return ""
+    return text[:length] + "…" if len(text) > length else text
+
+
+@ideas_app.command("list")
+def list_cmd(
+    book_slug: Optional[str] = typer.Argument(None, help="Book slug (omit to list all books)"),
+    status: Optional[IdeaStatus] = typer.Option(None, help="Filter by status"),
+    page: int = typer.Option(1, help="Page number"),
+    per_page: int = typer.Option(25, help="Items per page"),
+) -> None:
+    """List ideas with optional filters and pagination."""
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        book: Book | None = None
+        book_id: int | None = None
+        if book_slug:
+            book = get_book(conn, book_slug)
+            if book is None:
+                rprint(f"[red]Error:[/red] book not found: {book_slug}")
+                raise typer.Exit(code=1)
+            book_id = book.id
+
+        total = count_ideas(conn, book_id=book_id, status=status)
+        if total == 0:
+            rprint("No ideas found.")
+            return
+
+        total_pages = math.ceil(total / per_page)
+        if page > total_pages:
+            rprint(f"[red]Error:[/red] page {page} exceeds total pages ({total_pages})")
+            raise typer.Exit(code=1)
+
+        ideas = list_ideas_paginated(conn, book_id=book_id, status=status, page=page, per_page=per_page)
+
+        # Build title
+        title_parts = ["Ideas"]
+        if book:
+            title_parts.append(f'for "{book.title}"')
+        if status:
+            title_parts.append(f"({status.value})")
+        title_parts.append(f"— Page {page}/{total_pages}")
+        title = " ".join(title_parts)
+
+        table = Table(title=title)
+        table.add_column("ID", justify="right")
+        table.add_column("Status")
+        if not book_slug:
+            books_by_id = get_book_titles(conn)
+            table.add_column("Book")
+        table.add_column("Quote/Note")
+        table.add_column("Ref")
+        table.add_column("Updated")
+
+        for idea in ideas:
+            preview = _truncate(idea.raw_quote or idea.raw_note)
+            row: list[str] = [str(idea.id), idea.status]
+            if not book_slug:
+                row.append(books_by_id.get(idea.book_id, "?"))
+            row.extend([preview, idea.raw_ref or "", idea.updated_at or ""])
+            table.add_row(*row)
+
+        console.print(table)
+        rprint(f"Page {page}/{total_pages} ({total} total ideas)")
+
+
+@ideas_app.command()
+def show(
+    idea_id: int = typer.Argument(help="Idea ID"),
+) -> None:
+    """Show full details of a single idea."""
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        idea = get_idea(conn, idea_id)
+        if idea is None:
+            rprint(f"[red]Error:[/red] idea not found: {idea_id}")
+            raise typer.Exit(code=1)
+
+        # Get book title and source path
+        idea_book = get_book_by_id(conn, idea.book_id)
+        book_title = idea_book.title if idea_book else "?"
+        idea_source = get_source(conn, idea.source_id)
+        source_path = idea_source.path if idea_source else "?"
+
+        # Header
+        rprint(f"[bold]Idea #{idea.id}[/bold]  [{idea.status}]")
+        rprint(f"  Book:    {book_title}")
+        rprint(f"  Source:  {source_path}")
+        if idea.raw_ref:
+            rprint(f"  Ref:     {idea.raw_ref}")
+        rprint(f"  Created: {idea.created_at}")
+        rprint(f"  Updated: {idea.updated_at}")
+
+        # Raw
+        if idea.raw_quote or idea.raw_note:
+            rprint(f"\n[bold]Raw[/bold]")
+            if idea.raw_quote:
+                rprint(f'  Quote: "{escape(idea.raw_quote)}"')
+            if idea.raw_note:
+                rprint(f"  Note:  {escape(idea.raw_note)}")
+
+        # Triage
+        if idea.status == IdeaStatus.rejected and idea.rejection_reason:
+            rprint(f"\n[bold]Triage[/bold]")
+            rprint(f"  Rejection reason: {escape(idea.rejection_reason)}")
+
+        # Review
+        if idea.reviewed_quote or idea.reviewed_comment:
+            rprint(f"\n[bold]Review[/bold]")
+            if idea.reviewed_quote:
+                rprint(f'  Quote:    "{escape(idea.reviewed_quote)}"')
+            if idea.reviewed_quote_emphasis:
+                rprint(f"  Emphasis: {escape(idea.reviewed_quote_emphasis)}")
+            if idea.reviewed_comment:
+                rprint(f"  Comment:  {escape(idea.reviewed_comment)}")
+
+        # Caption
+        if idea.presentation_text or (idea.tags and idea.tags != "[]"):
+            rprint(f"\n[bold]Caption[/bold]")
+            if idea.presentation_text:
+                rprint(f"  Text: {escape(idea.presentation_text)}")
+            if idea.tags and idea.tags != "[]":
+                rprint(f"  Tags: {idea.tags}")
+
+
+@ideas_app.command()
+def edit(
+    idea_id: int = typer.Argument(help="Idea ID"),
+    status: Optional[IdeaStatus] = typer.Option(None, help="New status"),
+    raw_quote: Optional[str] = typer.Option(None, help="Update raw_quote"),
+    raw_note: Optional[str] = typer.Option(None, help="Update raw_note"),
+    reviewed_quote: Optional[str] = typer.Option(None, help="Update reviewed_quote"),
+    reviewed_quote_emphasis: Optional[str] = typer.Option(None, help="Update reviewed_quote_emphasis"),
+    reviewed_comment: Optional[str] = typer.Option(None, help="Update reviewed_comment"),
+    presentation_text: Optional[str] = typer.Option(None, help="Update presentation_text"),
+    rejection_reason: Optional[str] = typer.Option(None, help="Update rejection_reason"),
+    tags: Optional[str] = typer.Option(None, help="Update tags (JSON array)"),
+    force: bool = typer.Option(False, help="Skip status transition validation"),
+) -> None:
+    """Edit idea fields directly."""
+    fields: dict[str, object] = {}
+    if status is not None:
+        fields["status"] = status.value
+    if raw_quote is not None:
+        fields["raw_quote"] = raw_quote
+    if raw_note is not None:
+        fields["raw_note"] = raw_note
+    if reviewed_quote is not None:
+        fields["reviewed_quote"] = reviewed_quote
+    if reviewed_quote_emphasis is not None:
+        fields["reviewed_quote_emphasis"] = reviewed_quote_emphasis
+    if reviewed_comment is not None:
+        fields["reviewed_comment"] = reviewed_comment
+    if presentation_text is not None:
+        fields["presentation_text"] = presentation_text
+    if rejection_reason is not None:
+        fields["rejection_reason"] = rejection_reason
+    if tags is not None:
+        fields["tags"] = tags
+
+    if not fields:
+        rprint("[red]Error:[/red] at least one field must be provided")
+        raise typer.Exit(code=1)
+
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        try:
+            updated = update_idea(conn, idea_id, force=force, **fields)
+        except ValueError as e:
+            rprint(f"[red]Error:[/red] {e}")
+            raise typer.Exit(code=1)
+
+    rprint(f"[green]Updated idea {updated.id}[/green] — status: {updated.status}")
+    preview = _truncate(updated.reviewed_quote or updated.raw_quote or updated.raw_note, _MAX_PREVIEW_LEN)
+    if preview:
+        rprint(f'  "{escape(preview)}"')
 
 
 def _parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:

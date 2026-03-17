@@ -37,6 +37,9 @@ uv run anne idea-parse [slug]                # parse sources into ideas
 uv run anne idea-triage [slug]               # triage parsed ideas (triage/reject)
 uv run anne idea-review [slug]              # review triaged ideas (refine quotes, add context)
 uv run anne idea-caption [slug]             # generate Instagram captions for reviewed ideas
+uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
+uv run anne ideas show <id>                 # show full idea details
+uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)
 ```
 
 ## Conventions
