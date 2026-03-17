@@ -13,7 +13,7 @@ def test_bootstrap_creates_workspace(tmp_path: Path):
     root = tmp_path / "anne-workspace"
     config_path = tmp_path / "config.yaml"
 
-    prompts = iter([str(root), "fake-key"])
+    prompts = iter([str(root), "fake-key", ""])
     with patch("anne.cli.bootstrap.typer.prompt", side_effect=prompts):
         with patch("anne.config.settings.CONFIG_PATH", config_path):
             result = runner.invoke(app, ["bootstrap"])
@@ -28,13 +28,13 @@ def test_bootstrap_idempotent(tmp_path: Path):
     root = tmp_path / "anne-workspace"
     config_path = tmp_path / "config.yaml"
 
-    prompts = iter([str(root), ""])
+    prompts = iter([str(root), "", ""])
     with patch("anne.cli.bootstrap.typer.prompt", side_effect=prompts):
         with patch("anne.config.settings.CONFIG_PATH", config_path):
             runner.invoke(app, ["bootstrap"])
 
     # Run again — should succeed, not error
-    prompts = iter([str(root), "fake-key"])
+    prompts = iter([str(root), "fake-key", ""])
     with patch("anne.cli.bootstrap.typer.prompt", side_effect=prompts):
         with patch("anne.config.settings.CONFIG_PATH", config_path):
             result = runner.invoke(app, ["bootstrap"])

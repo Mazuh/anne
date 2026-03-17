@@ -5,6 +5,7 @@ import pytest
 from anne.services.books import create_book
 from anne.services.ideas import (
     approve_idea,
+    caption_idea,
     get_ideas_by_status,
     get_unparsed_sources,
     insert_ideas,
@@ -189,3 +190,54 @@ def test_review_idea_emphasis_null(tmp_db: sqlite3.Connection):
     reviewed = review_idea(tmp_db, ideas[0].id, "Short Q", None, "Context.")
     assert reviewed.reviewed_quote_emphasis is None
     assert reviewed.reviewed_quote == "Short Q"
+
+
+def test_caption_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Original quote")])
+    approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Short quote", "**Short** quote", "Context.")
+
+    captioned = caption_idea(
+        tmp_db, ideas[0].id,
+        presentation_text="This is the Instagram caption.",
+        tags='["poder", "ironia"]',
+    )
+    assert captioned.status == IdeaStatus.ready
+    assert captioned.presentation_text == "This is the Instagram caption."
+    assert captioned.tags == '["poder", "ironia"]'
+    # Previous fields untouched
+    assert captioned.reviewed_quote == "Short quote"
+    assert captioned.raw_quote == "Original quote"
+
+
+def test_caption_idea_not_reviewed(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    approve_idea(tmp_db, ideas[0].id)
+    # Still in 'approved' status, not reviewed
+    with pytest.raises(ValueError, match="not in reviewed status"):
+        caption_idea(tmp_db, ideas[0].id, "caption", "[]")
+
+
+def test_caption_idea_not_found(tmp_db: sqlite3.Connection):
+    with pytest.raises(ValueError, match="not in reviewed status"):
+        caption_idea(tmp_db, 9999, "caption", "[]")
+
+
+def test_caption_idea_invalid_tags_json(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q", None, "C")
+    with pytest.raises(ValueError, match="tags must be valid JSON"):
+        caption_idea(tmp_db, ideas[0].id, "caption", "not json")
+
+
+def test_caption_idea_tags_not_array(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q", None, "C")
+    with pytest.raises(ValueError, match="tags must be a JSON array"):
+        caption_idea(tmp_db, ideas[0].id, "caption", '{"not": "array"}')

@@ -17,9 +17,7 @@ def test_idea_status_values():
     assert IdeaStatus.approved == "approved"
     assert IdeaStatus.rejected == "rejected"
     assert IdeaStatus.reviewed == "reviewed"
-    assert IdeaStatus.contexted == "contexted"
-    assert IdeaStatus.presented == "presented"
-    assert IdeaStatus.paired == "paired"
+    assert IdeaStatus.ready == "ready"
 
 
 def test_asset_type_values():

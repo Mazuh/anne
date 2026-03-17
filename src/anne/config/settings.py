@@ -16,6 +16,8 @@ class Settings(BaseModel):
     content_language: str = "pt-BR"
     review_chunk_size: int = 10
     review_quote_target_length: int = 80
+    cta_link: str = ""
+    caption_chunk_size: int = 1 # preferred 1 for llm focused quality context
 
     @property
     def db_path(self) -> Path:
@@ -40,7 +42,17 @@ def load_settings() -> Settings:
 
 def save_settings(settings: Settings) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    defaults = Settings()
     data: dict = {"root_dir": str(settings.root_dir)}
     if settings.gemini_api_key:
         data["gemini_api_key"] = settings.gemini_api_key
+    # Persist any field that differs from its default
+    for field_name in (
+        "max_llm_input_tokens", "llm_call_interval", "triage_chunk_size",
+        "content_language", "review_chunk_size", "review_quote_target_length",
+        "cta_link", "caption_chunk_size",
+    ):
+        value = getattr(settings, field_name)
+        if value != getattr(defaults, field_name):
+            data[field_name] = value
     CONFIG_PATH.write_text(yaml.dump(data, default_flow_style=False))

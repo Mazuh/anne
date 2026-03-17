@@ -16,9 +16,7 @@ class IdeaStatus(StrEnum):
     approved = "approved"
     rejected = "rejected"
     reviewed = "reviewed"
-    contexted = "contexted"
-    presented = "presented"
-    paired = "paired"
+    ready = "ready"
 
 
 class AssetType(StrEnum):

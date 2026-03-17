@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from anne.models import Idea, IdeaStatus, Source
@@ -92,6 +93,36 @@ def review_idea(
     )
     if cursor.rowcount == 0:
         raise ValueError(f"Idea not found or not in approved status: {idea_id}")
+    row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    return Idea(**dict(row))
+
+
+def caption_idea(
+    conn: sqlite3.Connection,
+    idea_id: int,
+    presentation_text: str,
+    tags: str,
+) -> Idea:
+    try:
+        parsed = json.loads(tags)
+        if not isinstance(parsed, list):
+            raise ValueError("tags must be a JSON array")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"tags must be valid JSON: {e}") from e
+    cursor = conn.execute(
+        """UPDATE ideas SET status = ?, presentation_text = ?, tags = ?,
+           updated_at = datetime('now')
+           WHERE id = ? AND status = ?""",
+        (
+            IdeaStatus.ready,
+            presentation_text,
+            tags,
+            idea_id,
+            IdeaStatus.reviewed,
+        ),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"Idea not found or not in reviewed status: {idea_id}")
     row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
     return Idea(**dict(row))
 

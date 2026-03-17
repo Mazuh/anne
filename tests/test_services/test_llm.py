@@ -5,7 +5,7 @@ import pytest
 
 import anne.services.llm as llm_module
 from anne.models import Idea, IdeaStatus
-from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, ContentTooLargeError, RateLimitError
+from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, ContentTooLargeError, RateLimitError
 
 
 @pytest.fixture(autouse=True)
@@ -252,3 +252,71 @@ def test_review_ideas_with_llm_content_too_large():
     ideas = [_make_approved_idea(1, raw_quote="x" * 10000)]
     with pytest.raises(ContentTooLargeError, match="Review prompt too large"):
         review_ideas_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)
+
+
+# --- caption_ideas_with_llm tests ---
+
+
+def _make_reviewed_idea(idea_id: int, reviewed_quote: str = "quote", reviewed_comment: str = "comment") -> Idea:
+    return Idea(
+        id=idea_id, book_id=1, source_id=1, status=IdeaStatus.reviewed,
+        raw_quote="original", reviewed_quote=reviewed_quote,
+        reviewed_quote_emphasis=f"**{reviewed_quote}**",
+        reviewed_comment=reviewed_comment,
+        created_at="2026-01-01T00:00:00", updated_at="2026-01-01T00:00:00",
+    )
+
+
+def test_caption_ideas_with_llm_happy_path():
+    ideas = [_make_reviewed_idea(1)]
+    response = json.dumps([
+        {
+            "id": 1,
+            "presentation_text": "This hook grabs you.\n\nThe rest of the caption.",
+            "tags": ["poder", "ironia"],
+        }
+    ])
+    mock = _mock_urlopen(_gemini_response(response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        results = caption_ideas_with_llm("fake-key", "Book", "Author", ideas)
+    assert len(results) == 1
+    assert results[0].idea_id == 1
+    assert "hook" in results[0].presentation_text
+    assert results[0].tags == ["poder", "ironia"]
+
+
+def test_caption_ideas_with_llm_with_cta_link():
+    ideas = [_make_reviewed_idea(1)]
+    response = json.dumps([
+        {
+            "id": 1,
+            "presentation_text": "Caption with link.\n\nhttps://example.com\n\n#hashtag",
+            "tags": ["reflexao"],
+        }
+    ])
+    mock = _mock_urlopen(_gemini_response(response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        results = caption_ideas_with_llm(
+            "fake-key", "Book", "Author", ideas, cta_link="https://example.com"
+        )
+    assert len(results) == 1
+    assert results[0].presentation_text is not None
+
+
+def test_caption_ideas_with_llm_omitted_ids_not_defaulted():
+    ideas = [_make_reviewed_idea(1), _make_reviewed_idea(2)]
+    response = json.dumps([
+        {"id": 1, "presentation_text": "Caption 1", "tags": ["mood"]},
+    ])
+    mock = _mock_urlopen(_gemini_response(response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        results = caption_ideas_with_llm("fake-key", "Book", "Author", ideas)
+    # Only idea 1 returned — idea 2 stays reviewed (strict mode)
+    assert len(results) == 1
+    assert results[0].idea_id == 1
+
+
+def test_caption_ideas_with_llm_content_too_large():
+    ideas = [_make_reviewed_idea(1, reviewed_quote="x" * 10000)]
+    with pytest.raises(ContentTooLargeError, match="Caption prompt too large"):
+        caption_ideas_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)

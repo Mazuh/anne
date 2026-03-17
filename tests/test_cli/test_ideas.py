@@ -11,7 +11,7 @@ from anne.db.connection import get_connection
 from anne.db.migrate import apply_schema
 from anne.models import SourceType
 from anne.services.books import create_book
-from anne.services.ideas import insert_ideas
+from anne.services.ideas import insert_ideas, review_idea
 from anne.services.sources import import_source
 from anne.services.parsers import ParsedIdea
 from anne.services.ideas import approve_idea
@@ -436,3 +436,139 @@ def test_idea_review_partial_response(tmp_settings: Settings):
         assert row["status"] == "reviewed"
         row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
         assert row["status"] == "approved"
+
+
+# --- idea-caption tests ---
+
+
+def _setup_book_with_reviewed_ideas(tmp_settings: Settings) -> None:
+    """Create a book with reviewed ideas in the DB."""
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        book = create_book(conn, "Test Book", "Author")
+        source = import_source(
+            conn, book.id, SourceType.kindle_export_html, "sources/kindle/notes.html", "fp1"
+        )
+        ideas = insert_ideas(conn, book.id, source.id, [
+            ParsedIdea(raw_quote="A great insight about the world", raw_note="My thought"),
+            ParsedIdea(raw_quote="Another good idea", raw_note="With a note"),
+        ])
+        for idea in ideas:
+            approve_idea(conn, idea.id)
+            review_idea(
+                conn, idea.id,
+                reviewed_quote=f"Reviewed {idea.id}",
+                reviewed_quote_emphasis=f"**Reviewed** {idea.id}",
+                reviewed_comment=f"Context for {idea.id}.",
+            )
+
+
+def _mock_caption_response(results: list[dict]) -> MagicMock:
+    body = {
+        "candidates": [
+            {"content": {"parts": [{"text": json.dumps(results)}]}}
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(body).encode()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
+
+
+def test_idea_caption_happy_path(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'reviewed' ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp = _mock_caption_response([
+        {"id": idea_ids[0], "presentation_text": "Hook line.\n\nCaption body.", "tags": ["poder", "ironia"]},
+        {"id": idea_ids[1], "presentation_text": "Another hook.\n\nMore text.", "tags": ["melancolia"]},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["idea-caption", "test-book"])
+    assert result.exit_code == 0
+    assert "Captioned" in result.output
+    assert "2 ideas captioned" in result.output
+
+    # Verify DB state
+    with get_connection(tmp_settings.db_path) as conn:
+        row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
+        assert row["status"] == "ready"
+        assert "Hook line" in row["presentation_text"]
+        assert "poder" in row["tags"]
+
+        row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
+        assert row["status"] == "ready"
+
+
+def test_idea_caption_no_reviewed_ideas(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        create_book(conn, "Empty Book", "Author")
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["idea-caption", "empty-book"])
+    assert result.exit_code == 0
+    assert "no reviewed ideas" in result.output
+
+
+def test_idea_caption_book_not_found(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["idea-caption", "nonexistent"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_caption_missing_api_key(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
+    with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
+        result = runner.invoke(app, ["idea-caption"])
+    assert result.exit_code == 1
+    assert "gemini_api_key" in result.output
+
+
+def test_idea_caption_all_books(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'reviewed' ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp = _mock_caption_response([
+        {"id": idea_ids[0], "presentation_text": "Caption 1", "tags": ["mood"]},
+        {"id": idea_ids[1], "presentation_text": "Caption 2", "tags": ["mood"]},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["idea-caption"])
+    assert result.exit_code == 0
+    assert "2 ideas captioned" in result.output
+
+
+def test_idea_caption_rate_limited(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.cli.ideas.caption_ideas_with_llm", side_effect=RateLimitError("rate limited")),
+    ):
+        result = runner.invoke(app, ["idea-caption", "test-book"])
+    assert result.exit_code == 1
+    assert "Rate limited" in result.output
+    assert "Progress so far has been saved" in result.output

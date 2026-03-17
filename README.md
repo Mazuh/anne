@@ -65,9 +65,13 @@ anne idea-triage
 # review approved ideas: refine quotes, add factual context using LLM
 # optionally book slug can be specified too
 anne idea-review
+
+# generate Instagram captions for reviewed ideas using LLM
+# optionally book slug can be specified too
+anne idea-caption
 ```
 
-More pipeline commands (context, presentation, media generation) are coming in future phases.
+More pipeline commands (asset matching, media generation) are coming in future phases.
 
 ## Planning
 
@@ -77,8 +81,8 @@ From Claude using ~/Downloads/anne-technical-proposal.md as source of truth:
   - ✅ DONE Phase 1 — Foundation + Books + Import
   - ✅ DONE Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)
   - ✅ DONE Phase 3 — Curation triage (approve/reject ideas via LLM, lenient first pass, configurable chunking)                                                                                              
-  - ✅ DONE Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)                                                                     
-  - Phase 5 — Curation presentation (caption/presentation text generation, tags)                                                                                                             
+  - ✅ DONE Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)
+  - ✅ DONE Phase 5 — Caption generation (Instagram captions, mood/tone tags, CTA link support)                                                                                                             
   - Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)                                                                                                   
   - Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)                                                                                          
   - Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)                                                                                

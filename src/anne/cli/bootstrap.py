@@ -40,12 +40,18 @@ def bootstrap() -> None:
     else:
         gemini_key = typer.prompt("Gemini API key").strip()
 
+    cta_link = typer.prompt(
+        "CTA link for captions (e.g. Substack URL, leave blank to skip)",
+        default=existing.cta_link or "",
+    ).strip()
+
     (root_dir / "data").mkdir(parents=True, exist_ok=True)
     (root_dir / "books").mkdir(parents=True, exist_ok=True)
 
     settings = Settings(
         root_dir=root_dir,
         gemini_api_key=gemini_key or None,
+        cta_link=cta_link,
     )
     save_settings(settings)
 
