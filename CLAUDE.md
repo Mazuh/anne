@@ -35,10 +35,10 @@ uv run anne books list                        # list books
 uv run anne books show <slug>                 # show book details
 uv run anne sources import <slug> <file>      # import source file
 uv run anne sources list <slug>               # list sources for a book
-uv run anne idea-parse [slug]                # parse sources into ideas
-uv run anne idea-triage [slug]               # triage parsed ideas (triage/reject)
-uv run anne idea-review [slug]              # review triaged ideas (refine quotes, add context)
-uv run anne idea-caption [slug]             # generate Instagram captions for reviewed ideas
+uv run anne ideas parse [slug]               # parse sources into ideas
+uv run anne ideas triage [slug]              # triage parsed ideas (triage/reject)
+uv run anne ideas review [slug]             # review triaged ideas (refine quotes, add context)
+uv run anne ideas caption [slug]            # generate Instagram captions for reviewed ideas
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
 uv run anne ideas show <id>                 # show full idea details
 uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)

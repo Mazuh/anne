@@ -279,6 +279,7 @@ def _parse_book(
     return total
 
 
+@ideas_app.command("parse")
 def idea_parse(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to parse all books)"),
 ) -> None:
@@ -315,6 +316,7 @@ def idea_parse(
     rprint(f"\n[bold]Total: {grand_total} ideas parsed[/bold]")
 
 
+@ideas_app.command("triage")
 def idea_triage(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to triage all books)"),
 ) -> None:
@@ -388,6 +390,7 @@ def idea_triage(
     rprint(f"\n[bold]Total: {total_triaged} triaged, {total_rejected} rejected ({total_triaged + total_rejected} {label})[/bold]")
 
 
+@ideas_app.command("review")
 def idea_review(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to review all books)"),
 ) -> None:
@@ -461,6 +464,7 @@ def idea_review(
     rprint(f"\n[bold]Total: {total_reviewed} {label} reviewed[/bold]")
 
 
+@ideas_app.command("caption")
 def idea_caption(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to caption all books)"),
 ) -> None:

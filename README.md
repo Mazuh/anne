@@ -59,8 +59,8 @@ anne sources list o-principe
 Parse sources into ideas. Kindle HTML parsing is deterministic; essays use LLM. The book slug is optional (omit to parse all books):
 
 ```sh
-anne idea-parse o-principe
-anne idea-parse
+anne ideas parse o-principe
+anne ideas parse
 ```
 
 ### Idea triage — status: "triaged" or "rejected"
@@ -68,7 +68,7 @@ anne idea-parse
 Triage parsed ideas using LLM (lenient first pass). Each idea is either kept or rejected:
 
 ```sh
-anne idea-triage
+anne ideas triage
 ```
 
 ### Idea review — status: "reviewed"
@@ -76,7 +76,7 @@ anne idea-triage
 Triaged ideas get refined and translated quotes plus factual context via LLM:
 
 ```sh
-anne idea-review
+anne ideas review
 ```
 
 ### Idea caption — status: "ready"
@@ -84,7 +84,7 @@ anne idea-review
 Generate Instagram captions for reviewed ideas using LLM:
 
 ```sh
-anne idea-caption
+anne ideas caption
 ```
 
 ### Browsing and editing ideas

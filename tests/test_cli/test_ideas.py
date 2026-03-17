@@ -61,7 +61,7 @@ def _setup_book_with_essay_source(tmp_settings: Settings) -> None:
 def test_idea_parse_kindle(tmp_settings: Settings):
     _setup_book_with_kindle_source(tmp_settings)
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
-        result = runner.invoke(app, ["idea-parse", "test-book"])
+        result = runner.invoke(app, ["ideas", "parse", "test-book"])
     assert result.exit_code == 0
     assert "1 idea extracted" in result.output
     assert "Total: 1 ideas parsed" in result.output
@@ -70,8 +70,8 @@ def test_idea_parse_kindle(tmp_settings: Settings):
 def test_idea_parse_idempotent(tmp_settings: Settings):
     _setup_book_with_kindle_source(tmp_settings)
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
-        runner.invoke(app, ["idea-parse", "test-book"])
-        result = runner.invoke(app, ["idea-parse", "test-book"])
+        runner.invoke(app, ["ideas", "parse", "test-book"])
+        result = runner.invoke(app, ["ideas", "parse", "test-book"])
     assert result.exit_code == 0
     assert "no unparsed sources" in result.output
     assert "Total: 0 ideas parsed" in result.output
@@ -80,7 +80,7 @@ def test_idea_parse_idempotent(tmp_settings: Settings):
 def test_idea_parse_book_not_found(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
-        result = runner.invoke(app, ["idea-parse", "nonexistent"])
+        result = runner.invoke(app, ["ideas", "parse", "nonexistent"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
@@ -89,7 +89,7 @@ def test_idea_parse_missing_api_key_for_essay(tmp_settings: Settings):
     _setup_book_with_essay_source(tmp_settings)
     settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
     with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
-        result = runner.invoke(app, ["idea-parse", "essay-book"])
+        result = runner.invoke(app, ["ideas", "parse", "essay-book"])
     assert result.exit_code == 1
     assert "gemini_api_key" in result.output
 
@@ -119,7 +119,7 @@ def test_idea_parse_essay_with_llm(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-parse", "essay-book"])
+        result = runner.invoke(app, ["ideas", "parse", "essay-book"])
     assert result.exit_code == 0
     assert "1 idea extracted" in result.output
 
@@ -127,12 +127,12 @@ def test_idea_parse_essay_with_llm(tmp_settings: Settings):
 def test_idea_parse_all_books(tmp_settings: Settings):
     _setup_book_with_kindle_source(tmp_settings)
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
-        result = runner.invoke(app, ["idea-parse"])
+        result = runner.invoke(app, ["ideas", "parse"])
     assert result.exit_code == 0
     assert "1 idea extracted" in result.output
 
 
-# --- idea-triage tests ---
+# --- ideas triage tests ---
 
 
 def _setup_book_with_parsed_ideas(tmp_settings: Settings) -> None:
@@ -182,7 +182,7 @@ def test_idea_triage_approves_and_rejects(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-triage", "test-book"])
+        result = runner.invoke(app, ["ideas", "triage", "test-book"])
     assert result.exit_code == 0
     assert "Triaged" in result.output
     assert "Rejected" in result.output
@@ -204,7 +204,7 @@ def test_idea_triage_no_parsed_ideas(tmp_settings: Settings):
         create_book(conn, "Empty Book", "Author")
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["idea-triage", "empty-book"])
+        result = runner.invoke(app, ["ideas", "triage", "empty-book"])
     assert result.exit_code == 0
     assert "no parsed ideas" in result.output
 
@@ -213,7 +213,7 @@ def test_idea_triage_book_not_found(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["idea-triage", "nonexistent"])
+        result = runner.invoke(app, ["ideas", "triage", "nonexistent"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
@@ -222,7 +222,7 @@ def test_idea_triage_missing_api_key(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
     with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
-        result = runner.invoke(app, ["idea-triage"])
+        result = runner.invoke(app, ["ideas", "triage"])
     assert result.exit_code == 1
     assert "gemini_api_key" in result.output
 
@@ -245,7 +245,7 @@ def test_idea_triage_all_books(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-triage"])
+        result = runner.invoke(app, ["ideas", "triage"])
     assert result.exit_code == 0
     assert "3 triaged, 0 rejected (3 ideas)" in result.output
 
@@ -258,13 +258,13 @@ def test_idea_triage_rate_limited(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.cli.ideas.triage_ideas_with_llm", side_effect=RateLimitError("rate limited")),
     ):
-        result = runner.invoke(app, ["idea-triage", "test-book"])
+        result = runner.invoke(app, ["ideas", "triage", "test-book"])
     assert result.exit_code == 1
     assert "Rate limited" in result.output
     assert "Progress so far has been saved" in result.output
 
 
-# --- idea-review tests ---
+# --- ideas review tests ---
 
 
 def _setup_book_with_triaged_ideas(tmp_settings: Settings) -> None:
@@ -323,7 +323,7 @@ def test_idea_review_happy_path(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-review", "test-book"])
+        result = runner.invoke(app, ["ideas", "review", "test-book"])
     assert result.exit_code == 0
     assert "Reviewed" in result.output
     assert "2 ideas reviewed" in result.output
@@ -350,7 +350,7 @@ def test_idea_review_no_triaged_ideas(tmp_settings: Settings):
         create_book(conn, "Empty Book", "Author")
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["idea-review", "empty-book"])
+        result = runner.invoke(app, ["ideas", "review", "empty-book"])
     assert result.exit_code == 0
     assert "no triaged ideas" in result.output
 
@@ -359,7 +359,7 @@ def test_idea_review_book_not_found(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["idea-review", "nonexistent"])
+        result = runner.invoke(app, ["ideas", "review", "nonexistent"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
@@ -368,7 +368,7 @@ def test_idea_review_missing_api_key(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
     with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
-        result = runner.invoke(app, ["idea-review"])
+        result = runner.invoke(app, ["ideas", "review"])
     assert result.exit_code == 1
     assert "gemini_api_key" in result.output
 
@@ -390,7 +390,7 @@ def test_idea_review_all_books(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-review"])
+        result = runner.invoke(app, ["ideas", "review"])
     assert result.exit_code == 0
     assert "2 ideas reviewed" in result.output
 
@@ -403,7 +403,7 @@ def test_idea_review_rate_limited(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.cli.ideas.review_ideas_with_llm", side_effect=RateLimitError("rate limited")),
     ):
-        result = runner.invoke(app, ["idea-review", "test-book"])
+        result = runner.invoke(app, ["ideas", "review", "test-book"])
     assert result.exit_code == 1
     assert "Rate limited" in result.output
     assert "Progress so far has been saved" in result.output
@@ -426,7 +426,7 @@ def test_idea_review_partial_response(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-review", "test-book"])
+        result = runner.invoke(app, ["ideas", "review", "test-book"])
     assert result.exit_code == 0
     assert "1 idea reviewed" in result.output
 
@@ -438,7 +438,7 @@ def test_idea_review_partial_response(tmp_settings: Settings):
         assert row["status"] == "triaged"
 
 
-# --- idea-caption tests ---
+# --- ideas caption tests ---
 
 
 def _setup_book_with_reviewed_ideas(tmp_settings: Settings) -> None:
@@ -493,7 +493,7 @@ def test_idea_caption_happy_path(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-caption", "test-book"])
+        result = runner.invoke(app, ["ideas", "caption", "test-book"])
     assert result.exit_code == 0
     assert "Captioned" in result.output
     assert "2 ideas captioned" in result.output
@@ -515,7 +515,7 @@ def test_idea_caption_no_reviewed_ideas(tmp_settings: Settings):
         create_book(conn, "Empty Book", "Author")
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["idea-caption", "empty-book"])
+        result = runner.invoke(app, ["ideas", "caption", "empty-book"])
     assert result.exit_code == 0
     assert "no reviewed ideas" in result.output
 
@@ -524,7 +524,7 @@ def test_idea_caption_book_not_found(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["idea-caption", "nonexistent"])
+        result = runner.invoke(app, ["ideas", "caption", "nonexistent"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
@@ -533,7 +533,7 @@ def test_idea_caption_missing_api_key(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
     with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
-        result = runner.invoke(app, ["idea-caption"])
+        result = runner.invoke(app, ["ideas", "caption"])
     assert result.exit_code == 1
     assert "gemini_api_key" in result.output
 
@@ -555,7 +555,7 @@ def test_idea_caption_all_books(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["idea-caption"])
+        result = runner.invoke(app, ["ideas", "caption"])
     assert result.exit_code == 0
     assert "2 ideas captioned" in result.output
 
@@ -568,7 +568,7 @@ def test_idea_caption_rate_limited(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.cli.ideas.caption_ideas_with_llm", side_effect=RateLimitError("rate limited")),
     ):
-        result = runner.invoke(app, ["idea-caption", "test-book"])
+        result = runner.invoke(app, ["ideas", "caption", "test-book"])
     assert result.exit_code == 1
     assert "Rate limited" in result.output
     assert "Progress so far has been saved" in result.output
