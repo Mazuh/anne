@@ -98,6 +98,17 @@ anne ideas edit 42 --status reviewed --force
 anne ideas edit 42 --reviewed-quote "New text" --tags '["poder"]'
 ```
 
+### TUI mode
+
+Open a keyboard-driven terminal UI for browsing and editing ideas:
+
+```sh
+anne start               # opens dashboard with all books
+anne start o-principe    # opens directly into book workspace
+```
+
+Keybindings: `j/k` navigate, `a` triage, `x` reject, `u` unreject, `e` edit field, `t` edit tags, `E` open in `$EDITOR`, `f` filter by status, `/` search, `n/p` page, `q` back.
+
 More pipeline commands (asset matching, media generation) are coming in future phases.
 
 ## Planning
@@ -111,7 +122,7 @@ From Claude using ~/Downloads/anne-technical-proposal.md as source of truth:
 - [x] Phase 5 — Caption generation (Instagram captions, mood/tone tags, CTA link support)
 - [ ] Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)
 - [ ] Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)
-- [ ] Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)
+- [x] Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)
 - [ ] Phase 9 — Publication tracking (posted_at, publish_count, performance_notes, repost candidates)
 
 ## License

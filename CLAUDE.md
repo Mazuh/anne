@@ -5,20 +5,22 @@ Local-first Python CLI pipeline for turning book reading notes into Instagram-re
 ## Tech stack
 
 - Python 3.14, SQLite, Typer (CLI), Rich (output), Pydantic (models), PyYAML (config)
+- Textual (TUI framework for `anne start`)
 - FFmpeg for media rendering (future phase)
-- pytest for tests
+- pytest, pytest-asyncio for tests
 
 ## Project structure
 
 ```
 src/anne/
-  cli/          # Typer commands (bootstrap, doctor, books, sources, ideas)
+  cli/          # Typer commands (bootstrap, doctor, books, sources, ideas, review)
+  tui/          # Textual TUI (AnneApp, screens, widgets, modals)
   models/       # Pydantic DTOs + StrEnums (Book, Source, Idea, Asset, Post)
   services/     # Business logic (books, sources, ideas, parsers, llm, filesystem)
   db/           # SQLite connection, schema.sql, migrations
   config/       # Pydantic Settings, YAML config loader
   utils/        # slugify, exceptions
-tests/          # pytest tests (test_cli, test_db, test_models, test_services)
+tests/          # pytest tests (test_cli, test_db, test_models, test_services, test_tui)
 ```
 
 ## Commands
@@ -40,6 +42,8 @@ uv run anne idea-caption [slug]             # generate Instagram captions for re
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
 uv run anne ideas show <id>                 # show full idea details
 uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)
+uv run anne start                          # open TUI dashboard
+uv run anne start <slug>                   # open TUI directly into book workspace
 ```
 
 ## Conventions
@@ -63,7 +67,8 @@ uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-
 - Real SQLite databases (no mocks for DB)
 - Temp directories via pytest `tmp_path`
 - `CliRunner` for CLI integration tests
-- Fixtures in `tests/conftest.py`
+- Textual `run_test()` + `pilot` for TUI tests (async, pytest-asyncio)
+- Fixtures in `tests/conftest.py` and `tests/test_tui/conftest.py`
 
 ## Pipeline stages (idea status flow)
 

@@ -1,0 +1,32 @@
+/* Anne TUI Styles */
+
+#dashboard-table {
+    height: 1fr;
+    margin: 1 2;
+}
+
+#workspace-layout {
+    height: 1fr;
+}
+
+#idea-list {
+    width: 30%;
+    border-right: solid $primary;
+}
+
+#idea-detail {
+    width: 50%;
+    padding: 1 2;
+}
+
+#action-panel {
+    width: 20%;
+    border-left: solid $primary;
+    padding: 1 1;
+}
+
+#search-input {
+    dock: bottom;
+    margin-bottom: 1;
+}
+

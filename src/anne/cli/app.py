@@ -5,6 +5,7 @@ from anne.cli.doctor import doctor
 from anne.cli import books as books_module
 from anne.cli import sources as sources_module
 from anne.cli.ideas import idea_triage, idea_parse, idea_review, idea_caption, ideas_app
+from anne.cli.review import start_tui
 
 app = typer.Typer(help="Anne — pipeline CLI for turning reading notes into posts.")
 
@@ -17,3 +18,4 @@ app.command("idea-caption")(idea_caption)
 app.add_typer(books_module.app, name="books")
 app.add_typer(sources_module.app, name="sources")
 app.add_typer(ideas_app, name="ideas")
+app.command("start")(start_tui)

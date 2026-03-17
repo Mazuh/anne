@@ -1,0 +1,336 @@
+import os
+import subprocess
+import tempfile
+
+from textual import on, work
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal
+from textual.screen import Screen
+from textual.widgets import DataTable, Footer, Header, Input
+
+from anne.models import Book, Idea, IdeaStatus
+from anne.tui.widgets.action_panel import ActionPanel
+from anne.tui.widgets.idea_detail import IdeaDetail
+from anne.tui.widgets.idea_list import IdeaList
+from anne.tui.widgets.status_bar import StatusBar
+
+
+class BookWorkspaceScreen(Screen):
+    BINDINGS = [
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("n", "next_page", "Next page"),
+        Binding("p", "prev_page", "Prev page"),
+        Binding("r", "refresh", "Refresh"),
+        Binding("a", "triage", "Triage", show=False),
+        Binding("x", "reject", "Reject", show=False),
+        Binding("u", "unreject", "Unreject", show=False),
+        Binding("e", "edit_field", "Edit", show=False),
+        Binding("t", "edit_tags", "Tags", show=False),
+        Binding("E", "open_editor", "Editor", show=False),
+        Binding("f", "filter_status", "Filter"),
+        Binding("slash", "search", "Search"),
+        Binding("q", "go_back", "Back"),
+    ]
+
+    def __init__(self, book: Book) -> None:
+        super().__init__()
+        self._book = book
+        self._source_paths: dict[int, str] = {}
+
+    def on_mount(self) -> None:
+        self.sub_title = self._book.title
+        search_input = self.query_one("#search-input", Input)
+        search_input.display = False
+        self._load_ideas()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Horizontal(id="workspace-layout"):
+            yield IdeaList(id="idea-list")
+            yield IdeaDetail(id="idea-detail")
+            yield ActionPanel(id="action-panel")
+        yield StatusBar(id="status-bar")
+        yield Input(placeholder="Search...", id="search-input")
+        yield Footer()
+
+    @work(thread=True)
+    def _load_ideas(self, select_idea_id: int | None = None) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import count_ideas, list_ideas_paginated
+        from anne.services.sources import list_sources
+
+        idea_list = self.query_one("#idea-list", IdeaList)
+        settings = self.app.settings
+
+        with get_connection(settings.db_path) as conn:
+            if not self._source_paths:
+                sources = list_sources(conn, self._book.id)
+                self._source_paths = {s.id: s.path for s in sources}
+
+            status_filter = idea_list.status_filter
+            search = idea_list.search_query or None
+
+            total = count_ideas(
+                conn, book_id=self._book.id, status=status_filter, search=search,
+            )
+            ideas = list_ideas_paginated(
+                conn,
+                book_id=self._book.id,
+                status=status_filter,
+                page=idea_list.page,
+                per_page=idea_list.per_page,
+                search=search,
+            )
+
+        self.app.call_from_thread(self._populate, ideas, total, select_idea_id)
+
+    def _populate(self, ideas: list[Idea], total: int, select_idea_id: int | None = None) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.populate(ideas, total)
+
+        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar.refresh_bar(
+            status_filter=idea_list.status_filter,
+            page=idea_list.page,
+            total_pages=idea_list.total_pages,
+            total_ideas=total,
+            search_query=idea_list.search_query,
+        )
+
+        if select_idea_id is not None:
+            idea_list.select_idea_by_id(select_idea_id)
+        elif ideas:
+            self._show_idea_detail(ideas[0])
+
+    @on(DataTable.RowHighlighted, "#idea-list")
+    def _on_idea_cursor_changed(self, event: DataTable.RowHighlighted) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if idea:
+            self._show_idea_detail(idea)
+
+    def _show_idea_detail(self, idea: Idea) -> None:
+        detail = self.query_one("#idea-detail", IdeaDetail)
+        source_path = self._source_paths.get(idea.source_id, "?")
+        detail.show_idea(idea, self._book.title, source_path)
+
+        action_panel = self.query_one("#action-panel", ActionPanel)
+        action_panel.update_for_idea(idea)
+
+    # Navigation
+    def action_cursor_down(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.action_cursor_up()
+
+    def action_next_page(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        if idea_list.page < idea_list.total_pages:
+            idea_list.page += 1
+            self._load_ideas()
+
+    def action_prev_page(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        if idea_list.page > 1:
+            idea_list.page -= 1
+            self._load_ideas()
+
+    def action_refresh(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        selected = idea_list.get_selected_idea()
+        self._load_ideas(select_idea_id=selected.id if selected else None)
+
+    def action_go_back(self) -> None:
+        self.app.pop_screen()
+
+    # Mutations
+    def action_triage(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if idea and idea.status == IdeaStatus.parsed:
+            self._do_triage(idea.id)
+
+    @work(thread=True)
+    def _do_triage(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import triage_approve_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea_id)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} triaged.")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    def action_reject(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        allowed = {IdeaStatus.parsed, IdeaStatus.triaged, IdeaStatus.reviewed}
+        if idea.status not in allowed:
+            self.notify("Cannot reject from this status.", severity="warning")
+            return
+        from anne.tui.modals.confirm import ConfirmModal
+        preview = (idea.raw_quote or idea.raw_note or "")[:80]
+        self.app.push_screen(
+            ConfirmModal(f'Reject idea #{idea.id}?\n"{preview}"', show_reason=True),
+            callback=lambda result: self._on_reject_confirmed(idea.id, result),
+        )
+
+    def _on_reject_confirmed(self, idea_id: int, result: tuple[bool, str]) -> None:
+        confirmed, reason = result
+        if confirmed:
+            self._do_reject(idea_id, reason or None)
+
+    @work(thread=True)
+    def _do_reject(self, idea_id: int, reason: str | None) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import update_idea
+
+        try:
+            # Uses update_idea(force=True) instead of reject_idea() because
+            # the TUI allows rejecting from triaged/reviewed, not just parsed.
+            with get_connection(self.app.settings.db_path) as conn:
+                fields: dict[str, str] = {"status": IdeaStatus.rejected.value}
+                if reason:
+                    fields["rejection_reason"] = reason
+                update_idea(conn, idea_id, force=True, **fields)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} rejected.")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    def action_unreject(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if idea and idea.status == IdeaStatus.rejected:
+            self._do_unreject(idea.id)
+
+    @work(thread=True)
+    def _do_unreject(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import update_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                update_idea(conn, idea_id, force=True, status=IdeaStatus.parsed.value)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} unrejected → parsed.")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    # Filter & Search
+    def action_filter_status(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        from anne.tui.modals.filter import FilterModal
+        self.app.push_screen(
+            FilterModal(idea_list.status_filter),
+            callback=self._on_filter_selected,
+        )
+
+    def _on_filter_selected(self, status: IdeaStatus | None) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.status_filter = status
+        self._load_ideas()
+
+    def action_search(self) -> None:
+        search_input = self.query_one("#search-input", Input)
+        search_input.display = True
+        search_input.focus()
+
+    @on(Input.Submitted, "#search-input")
+    def _on_search_submitted(self, event: Input.Submitted) -> None:
+        search_input = self.query_one("#search-input", Input)
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.search_query = search_input.value.strip()
+        search_input.display = False
+        idea_list.focus()
+        self._load_ideas()
+
+    # Edit
+    def action_edit_field(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        from anne.tui.modals.edit_field import EditFieldModal
+        self.app.push_screen(
+            EditFieldModal(idea),
+            callback=lambda result: self._on_edit_result(idea.id, result),
+        )
+
+    def action_edit_tags(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        from anne.tui.modals.edit_field import EditFieldModal
+        self.app.push_screen(
+            EditFieldModal(idea, preset_field="tags"),
+            callback=lambda result: self._on_edit_result(idea.id, result),
+        )
+
+    def _on_edit_result(self, idea_id: int, result: tuple[str, str] | None) -> None:
+        if result is not None:
+            field, value = result
+            self._do_edit(idea_id, field, value)
+
+    @work(thread=True)
+    def _do_edit(self, idea_id: int, field: str, value: str) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import update_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                update_idea(conn, idea_id, force=True, **{field: value})
+            self.app.call_from_thread(self.notify, f"Idea {idea_id}: {field} updated.")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    def action_open_editor(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+
+        editor = os.environ.get("EDITOR", "vi")
+        field = "reviewed_quote" if idea.reviewed_quote is not None else "raw_quote"
+        current = getattr(idea, field) or ""
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, prefix="anne_idea_"
+        ) as f:
+            f.write(current)
+            tmp_path = f.name
+
+        idea_id = idea.id
+
+        try:
+            with self.app.suspend():
+                result = subprocess.run([editor, tmp_path])
+        except FileNotFoundError:
+            os.unlink(tmp_path)
+            self.notify(f"Editor '{editor}' not found.", severity="error")
+            return
+
+        if result.returncode != 0:
+            os.unlink(tmp_path)
+            self.notify(f"Editor exited with code {result.returncode}.", severity="error")
+            return
+
+        try:
+            with open(tmp_path) as f:
+                new_value = f.read()
+        finally:
+            os.unlink(tmp_path)
+
+        if new_value != current:
+            self._do_edit(idea_id, field, new_value)

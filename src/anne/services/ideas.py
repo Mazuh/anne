@@ -147,8 +147,26 @@ def get_idea(conn: sqlite3.Connection, idea_id: int) -> Idea | None:
     return Idea(**dict(row))
 
 
+def _apply_search_conditions(
+    conditions: list[str], params: list[object], search: str | None
+) -> None:
+    if search:
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        search_pattern = f"%{escaped}%"
+        conditions.append(
+            "(raw_quote LIKE ? ESCAPE '\\' OR raw_note LIKE ? ESCAPE '\\' "
+            "OR reviewed_quote LIKE ? ESCAPE '\\' "
+            "OR reviewed_comment LIKE ? ESCAPE '\\' "
+            "OR presentation_text LIKE ? ESCAPE '\\')"
+        )
+        params.extend([search_pattern] * 5)
+
+
 def count_ideas(
-    conn: sqlite3.Connection, book_id: int | None = None, status: IdeaStatus | None = None
+    conn: sqlite3.Connection,
+    book_id: int | None = None,
+    status: IdeaStatus | None = None,
+    search: str | None = None,
 ) -> int:
     query = "SELECT COUNT(*) FROM ideas"
     conditions: list[str] = []
@@ -159,6 +177,7 @@ def count_ideas(
     if status is not None:
         conditions.append("status = ?")
         params.append(status.value)
+    _apply_search_conditions(conditions, params, search)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     row = conn.execute(query, params).fetchone()
@@ -171,6 +190,7 @@ def list_ideas_paginated(
     status: IdeaStatus | None = None,
     page: int = 1,
     per_page: int = 25,
+    search: str | None = None,
 ) -> list[Idea]:
     query = "SELECT * FROM ideas"
     conditions: list[str] = []
@@ -181,6 +201,7 @@ def list_ideas_paginated(
     if status is not None:
         conditions.append("status = ?")
         params.append(status.value)
+    _apply_search_conditions(conditions, params, search)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY id"
