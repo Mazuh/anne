@@ -60,7 +60,7 @@ anne idea-parse
 
 # triage parsed ideas: approve or reject using LLM (lenient first pass),
 # optionally book slug can be specified too
-anne curation-triage
+anne idea-triage
 
 # review approved ideas: refine quotes, add factual context using LLM
 # optionally book slug can be specified too
@@ -77,7 +77,7 @@ From Claude using ~/Downloads/anne-technical-proposal.md as source of truth:
   - ✅ DONE Phase 1 — Foundation + Books + Import
   - ✅ DONE Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)
   - ✅ DONE Phase 3 — Curation triage (approve/reject ideas via LLM, lenient first pass, configurable chunking)                                                                                              
-  - Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)                                                                     
+  - ✅ DONE Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)                                                                     
   - Phase 5 — Curation presentation (caption/presentation text generation, tags)                                                                                                             
   - Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)                                                                                                   
   - Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)                                                                                          

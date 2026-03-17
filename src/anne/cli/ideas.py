@@ -112,7 +112,7 @@ def idea_parse(
     rprint(f"\n[bold]Total: {grand_total} ideas parsed[/bold]")
 
 
-def curation_triage(
+def idea_triage(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to triage all books)"),
 ) -> None:
     """Triage parsed ideas: approve or reject using LLM."""

@@ -132,7 +132,7 @@ def test_idea_parse_all_books(tmp_settings: Settings):
     assert "1 idea extracted" in result.output
 
 
-# --- curation-triage tests ---
+# --- idea-triage tests ---
 
 
 def _setup_book_with_parsed_ideas(tmp_settings: Settings) -> None:
@@ -163,7 +163,7 @@ def _mock_triage_response(decisions: list[dict]) -> MagicMock:
     return mock_resp
 
 
-def test_curation_triage_approves_and_rejects(tmp_settings: Settings):
+def test_idea_triage_approves_and_rejects(tmp_settings: Settings):
     _setup_book_with_parsed_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
@@ -182,7 +182,7 @@ def test_curation_triage_approves_and_rejects(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["curation-triage", "test-book"])
+        result = runner.invoke(app, ["idea-triage", "test-book"])
     assert result.exit_code == 0
     assert "Approved" in result.output
     assert "Rejected" in result.output
@@ -198,36 +198,36 @@ def test_curation_triage_approves_and_rejects(tmp_settings: Settings):
         assert row["rejection_reason"] == "vocab lookup"
 
 
-def test_curation_triage_no_parsed_ideas(tmp_settings: Settings):
+def test_idea_triage_no_parsed_ideas(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     with get_connection(tmp_settings.db_path) as conn:
         create_book(conn, "Empty Book", "Author")
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["curation-triage", "empty-book"])
+        result = runner.invoke(app, ["idea-triage", "empty-book"])
     assert result.exit_code == 0
     assert "no parsed ideas" in result.output
 
 
-def test_curation_triage_book_not_found(tmp_settings: Settings):
+def test_idea_triage_book_not_found(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
-        result = runner.invoke(app, ["curation-triage", "nonexistent"])
+        result = runner.invoke(app, ["idea-triage", "nonexistent"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
 
-def test_curation_triage_missing_api_key(tmp_settings: Settings):
+def test_idea_triage_missing_api_key(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
     with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
-        result = runner.invoke(app, ["curation-triage"])
+        result = runner.invoke(app, ["idea-triage"])
     assert result.exit_code == 1
     assert "gemini_api_key" in result.output
 
 
-def test_curation_triage_all_books(tmp_settings: Settings):
+def test_idea_triage_all_books(tmp_settings: Settings):
     _setup_book_with_parsed_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
@@ -245,12 +245,12 @@ def test_curation_triage_all_books(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
     ):
-        result = runner.invoke(app, ["curation-triage"])
+        result = runner.invoke(app, ["idea-triage"])
     assert result.exit_code == 0
     assert "3 approved, 0 rejected (3 ideas)" in result.output
 
 
-def test_curation_triage_rate_limited(tmp_settings: Settings):
+def test_idea_triage_rate_limited(tmp_settings: Settings):
     _setup_book_with_parsed_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
@@ -258,7 +258,7 @@ def test_curation_triage_rate_limited(tmp_settings: Settings):
         patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
         patch("anne.cli.ideas.triage_ideas_with_llm", side_effect=RateLimitError("rate limited")),
     ):
-        result = runner.invoke(app, ["curation-triage", "test-book"])
+        result = runner.invoke(app, ["idea-triage", "test-book"])
     assert result.exit_code == 1
     assert "Rate limited" in result.output
     assert "Progress so far has been saved" in result.output
