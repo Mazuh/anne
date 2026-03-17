@@ -14,7 +14,7 @@ from anne.services.books import create_book
 from anne.services.ideas import insert_ideas, review_idea
 from anne.services.sources import import_source
 from anne.services.parsers import ParsedIdea
-from anne.services.ideas import approve_idea
+from anne.services.ideas import triage_approve_idea
 from anne.services.llm import RateLimitError
 import anne.services.llm as llm_module
 
@@ -173,9 +173,9 @@ def test_idea_triage_approves_and_rejects(tmp_settings: Settings):
     idea_ids = [r["id"] for r in rows]
 
     mock_resp = _mock_triage_response([
-        {"id": idea_ids[0], "decision": "approve"},
+        {"id": idea_ids[0], "decision": "triage"},
         {"id": idea_ids[1], "decision": "reject", "rejection_reason": "vocab lookup"},
-        {"id": idea_ids[2], "decision": "approve"},
+        {"id": idea_ids[2], "decision": "triage"},
     ])
 
     with (
@@ -184,15 +184,15 @@ def test_idea_triage_approves_and_rejects(tmp_settings: Settings):
     ):
         result = runner.invoke(app, ["idea-triage", "test-book"])
     assert result.exit_code == 0
-    assert "Approved" in result.output
+    assert "Triaged" in result.output
     assert "Rejected" in result.output
     assert "vocab lookup" in result.output
-    assert "2 approved, 1 rejected (3 ideas)" in result.output
+    assert "2 triaged, 1 rejected (3 ideas)" in result.output
 
     # Verify DB state
     with get_connection(tmp_settings.db_path) as conn:
         row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
-        assert row["status"] == "approved"
+        assert row["status"] == "triaged"
         row = conn.execute("SELECT status, rejection_reason FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
         assert row["status"] == "rejected"
         assert row["rejection_reason"] == "vocab lookup"
@@ -236,9 +236,9 @@ def test_idea_triage_all_books(tmp_settings: Settings):
     idea_ids = [r["id"] for r in rows]
 
     mock_resp = _mock_triage_response([
-        {"id": idea_ids[0], "decision": "approve"},
-        {"id": idea_ids[1], "decision": "approve"},
-        {"id": idea_ids[2], "decision": "approve"},
+        {"id": idea_ids[0], "decision": "triage"},
+        {"id": idea_ids[1], "decision": "triage"},
+        {"id": idea_ids[2], "decision": "triage"},
     ])
 
     with (
@@ -247,7 +247,7 @@ def test_idea_triage_all_books(tmp_settings: Settings):
     ):
         result = runner.invoke(app, ["idea-triage"])
     assert result.exit_code == 0
-    assert "3 approved, 0 rejected (3 ideas)" in result.output
+    assert "3 triaged, 0 rejected (3 ideas)" in result.output
 
 
 def test_idea_triage_rate_limited(tmp_settings: Settings):
@@ -267,8 +267,8 @@ def test_idea_triage_rate_limited(tmp_settings: Settings):
 # --- idea-review tests ---
 
 
-def _setup_book_with_approved_ideas(tmp_settings: Settings) -> None:
-    """Create a book with approved ideas in the DB."""
+def _setup_book_with_triaged_ideas(tmp_settings: Settings) -> None:
+    """Create a book with triaged ideas in the DB."""
     apply_schema(tmp_settings.db_path)
     with get_connection(tmp_settings.db_path) as conn:
         book = create_book(conn, "Test Book", "Author")
@@ -280,7 +280,7 @@ def _setup_book_with_approved_ideas(tmp_settings: Settings) -> None:
             ParsedIdea(raw_quote="Another good idea", raw_note="With a note"),
         ])
         for idea in ideas:
-            approve_idea(conn, idea.id)
+            triage_approve_idea(conn, idea.id)
 
 
 def _mock_review_response(results: list[dict]) -> MagicMock:
@@ -297,11 +297,11 @@ def _mock_review_response(results: list[dict]) -> MagicMock:
 
 
 def test_idea_review_happy_path(tmp_settings: Settings):
-    _setup_book_with_approved_ideas(tmp_settings)
+    _setup_book_with_triaged_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
     with get_connection(tmp_settings.db_path) as conn:
-        rows = conn.execute("SELECT id FROM ideas WHERE status = 'approved' ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'triaged' ORDER BY id").fetchall()
     idea_ids = [r["id"] for r in rows]
 
     mock_resp = _mock_review_response([
@@ -344,7 +344,7 @@ def test_idea_review_happy_path(tmp_settings: Settings):
         assert row["reviewed_quote_emphasis"] is None
 
 
-def test_idea_review_no_approved_ideas(tmp_settings: Settings):
+def test_idea_review_no_triaged_ideas(tmp_settings: Settings):
     apply_schema(tmp_settings.db_path)
     with get_connection(tmp_settings.db_path) as conn:
         create_book(conn, "Empty Book", "Author")
@@ -352,7 +352,7 @@ def test_idea_review_no_approved_ideas(tmp_settings: Settings):
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
         result = runner.invoke(app, ["idea-review", "empty-book"])
     assert result.exit_code == 0
-    assert "no approved ideas" in result.output
+    assert "no triaged ideas" in result.output
 
 
 def test_idea_review_book_not_found(tmp_settings: Settings):
@@ -374,11 +374,11 @@ def test_idea_review_missing_api_key(tmp_settings: Settings):
 
 
 def test_idea_review_all_books(tmp_settings: Settings):
-    _setup_book_with_approved_ideas(tmp_settings)
+    _setup_book_with_triaged_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
     with get_connection(tmp_settings.db_path) as conn:
-        rows = conn.execute("SELECT id FROM ideas WHERE status = 'approved' ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'triaged' ORDER BY id").fetchall()
     idea_ids = [r["id"] for r in rows]
 
     mock_resp = _mock_review_response([
@@ -396,7 +396,7 @@ def test_idea_review_all_books(tmp_settings: Settings):
 
 
 def test_idea_review_rate_limited(tmp_settings: Settings):
-    _setup_book_with_approved_ideas(tmp_settings)
+    _setup_book_with_triaged_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
     with (
@@ -410,11 +410,11 @@ def test_idea_review_rate_limited(tmp_settings: Settings):
 
 
 def test_idea_review_partial_response(tmp_settings: Settings):
-    _setup_book_with_approved_ideas(tmp_settings)
+    _setup_book_with_triaged_ideas(tmp_settings)
     settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
 
     with get_connection(tmp_settings.db_path) as conn:
-        rows = conn.execute("SELECT id FROM ideas WHERE status = 'approved' ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'triaged' ORDER BY id").fetchall()
     idea_ids = [r["id"] for r in rows]
 
     # LLM only returns result for first idea, omits second
@@ -430,12 +430,12 @@ def test_idea_review_partial_response(tmp_settings: Settings):
     assert result.exit_code == 0
     assert "1 idea reviewed" in result.output
 
-    # Verify: first idea reviewed, second stays approved
+    # Verify: first idea reviewed, second stays triaged
     with get_connection(tmp_settings.db_path) as conn:
         row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
         assert row["status"] == "reviewed"
         row = conn.execute("SELECT status FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
-        assert row["status"] == "approved"
+        assert row["status"] == "triaged"
 
 
 # --- idea-caption tests ---
@@ -454,7 +454,7 @@ def _setup_book_with_reviewed_ideas(tmp_settings: Settings) -> None:
             ParsedIdea(raw_quote="Another good idea", raw_note="With a note"),
         ])
         for idea in ideas:
-            approve_idea(conn, idea.id)
+            triage_approve_idea(conn, idea.id)
             review_idea(
                 conn, idea.id,
                 reviewed_quote=f"Reviewed {idea.id}",

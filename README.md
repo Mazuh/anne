@@ -26,48 +26,64 @@ source .venv/bin/activate
 
 ## Usage
 
+First, initialize the workspace (creates directories and database):
+
 ```sh
-# initialize workspace (creates directories and database)
-uv run anne bootstrap
+anne bootstrap
+```
 
-# a hint will show up to make "anne" command globally available as a shell alias,
-# the commands above will assume you did it and restarted the shell
-# (otherwise keep in this same directory and using the full "uv run anne")
+A hint will show up to make `anne` globally available as a shell alias. The examples below assume you did it (otherwise stay in the project directory and use `uv run anne`).
 
-# check workspace health
-anne doctor
+Check workspace health anytime with `anne doctor`.
 
-# add a book
-# (just to group pipeline inputs and outputs, author flag is optional, just for books of same name)
+### Books management
+
+Add a book to group pipeline inputs and outputs. The `--author` flag is optional (useful for books with the same title):
+
+```sh
 anne books add "O Príncipe" --author "Maquiavel"
-
-# list books
 anne books list
+```
 
-# import a source of human thoughts
-# (a ssr url for an essay about the book, a file path to kindle highlights/notes etc.)
+### Importing sources
+
+Import reading notes or essays about a book. Sources can be Kindle HTML exports, essay files, or SSR URLs:
+
+```sh
 anne sources import o-principe https://notebook.mazuh.com/p/a-logica-politica-eterna-do-principe
-
-# list sources for a book
 anne sources list o-principe
+```
 
-# parse sources into ideas (deterministic for Kindle HTML, LLM-assisted for essays)
-# requires Gemini API key (prompted during bootstrap, or set ANNE_GEMINI_API_KEY env var)
+### Idea parsing — status: "parsed"
+
+Parse sources into ideas. Kindle HTML parsing is deterministic; essays use LLM. The book slug is optional (omit to parse all books):
+
+```sh
 anne idea-parse o-principe
-
-# parse all books at once, the book slug is optional
 anne idea-parse
+```
 
-# triage parsed ideas: approve or reject using LLM (lenient first pass),
-# optionally book slug can be specified too
+### Idea triage — status: "triaged" or "rejected"
+
+Triage parsed ideas using LLM (lenient first pass). Each idea is either kept or rejected:
+
+```sh
 anne idea-triage
+```
 
-# review approved ideas: refine quotes, add factual context using LLM
-# optionally book slug can be specified too
+### Idea review — status: "reviewed"
+
+Triaged ideas get refined and translated quotes plus factual context via LLM:
+
+```sh
 anne idea-review
+```
 
-# generate Instagram captions for reviewed ideas using LLM
-# optionally book slug can be specified too
+### Idea caption — status: "ready"
+
+Generate Instagram captions for reviewed ideas using LLM:
+
+```sh
 anne idea-caption
 ```
 
@@ -77,17 +93,15 @@ More pipeline commands (asset matching, media generation) are coming in future p
 
 From Claude using ~/Downloads/anne-technical-proposal.md as source of truth:
 
-```
-  - ✅ DONE Phase 1 — Foundation + Books + Import
-  - ✅ DONE Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)
-  - ✅ DONE Phase 3 — Curation triage (approve/reject ideas via LLM, lenient first pass, configurable chunking)                                                                                              
-  - ✅ DONE Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)
-  - ✅ DONE Phase 5 — Caption generation (Instagram captions, mood/tone tags, CTA link support)                                                                                                             
-  - Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)                                                                                                   
-  - Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)                                                                                          
-  - Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)                                                                                
-  - Phase 9 — Publication tracking (posted_at, publish_count, performance_notes, repost candidates) 
-```
+- [x] Phase 1 — Foundation + Books + Import
+- [x] Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)
+- [x] Phase 3 — Curation triage (triage/reject ideas via LLM, lenient first pass, configurable chunking)
+- [x] Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)
+- [x] Phase 5 — Caption generation (Instagram captions, mood/tone tags, CTA link support)
+- [ ] Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)
+- [ ] Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)
+- [ ] Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)
+- [ ] Phase 9 — Publication tracking (posted_at, publish_count, performance_notes, repost candidates)
 
 ## License
 

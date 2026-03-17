@@ -13,7 +13,7 @@ class SourceType(StrEnum):
 
 class IdeaStatus(StrEnum):
     parsed = "parsed"
-    approved = "approved"
+    triaged = "triaged"
     rejected = "rejected"
     reviewed = "reviewed"
     ready = "ready"

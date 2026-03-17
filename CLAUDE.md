@@ -34,8 +34,8 @@ uv run anne books show <slug>                 # show book details
 uv run anne sources import <slug> <file>      # import source file
 uv run anne sources list <slug>               # list sources for a book
 uv run anne idea-parse [slug]                # parse sources into ideas
-uv run anne idea-triage [slug]               # triage parsed ideas (approve/reject)
-uv run anne idea-review [slug]              # review approved ideas (refine quotes, add context)
+uv run anne idea-triage [slug]               # triage parsed ideas (triage/reject)
+uv run anne idea-review [slug]              # review triaged ideas (refine quotes, add context)
 uv run anne idea-caption [slug]             # generate Instagram captions for reviewed ideas
 ```
 
@@ -64,7 +64,7 @@ uv run anne idea-caption [slug]             # generate Instagram captions for re
 
 ## Pipeline stages (idea status flow)
 
-parsed → approved → reviewed → ready
+parsed → triaged → reviewed → ready
        ↘ rejected (reversible)
 
 ## Field naming

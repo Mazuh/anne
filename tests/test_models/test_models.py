@@ -14,7 +14,7 @@ def test_source_type_values():
 
 def test_idea_status_values():
     assert IdeaStatus.parsed == "parsed"
-    assert IdeaStatus.approved == "approved"
+    assert IdeaStatus.triaged == "triaged"
     assert IdeaStatus.rejected == "rejected"
     assert IdeaStatus.reviewed == "reviewed"
     assert IdeaStatus.ready == "ready"

@@ -60,10 +60,10 @@ def get_ideas_by_status(
     return [Idea(**dict(r)) for r in rows]
 
 
-def approve_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
+def triage_approve_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
     cursor = conn.execute(
         "UPDATE ideas SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = ?",
-        (IdeaStatus.approved, idea_id, IdeaStatus.parsed),
+        (IdeaStatus.triaged, idea_id, IdeaStatus.parsed),
     )
     if cursor.rowcount == 0:
         raise ValueError(f"Idea not found or not in parsed status: {idea_id}")
@@ -88,11 +88,11 @@ def review_idea(
             reviewed_quote_emphasis,
             reviewed_comment,
             idea_id,
-            IdeaStatus.approved,
+            IdeaStatus.triaged,
         ),
     )
     if cursor.rowcount == 0:
-        raise ValueError(f"Idea not found or not in approved status: {idea_id}")
+        raise ValueError(f"Idea not found or not in triaged status: {idea_id}")
     row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
     return Idea(**dict(row))
 

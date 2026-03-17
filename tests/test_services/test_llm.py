@@ -103,7 +103,7 @@ def _make_idea(idea_id: int, raw_quote: str = "quote", raw_note: str | None = No
 def test_triage_ideas_with_llm_mixed():
     ideas = [_make_idea(1, raw_quote="A real insight"), _make_idea(2, raw_quote="ephemeral")]
     response = json.dumps([
-        {"id": 1, "decision": "approve"},
+        {"id": 1, "decision": "triage"},
         {"id": 2, "decision": "reject", "rejection_reason": "vocab lookup"},
     ])
     mock = _mock_urlopen(_gemini_response(response))
@@ -111,7 +111,7 @@ def test_triage_ideas_with_llm_mixed():
         decisions = triage_ideas_with_llm("fake-key", "Book", "Author", ideas)
     assert len(decisions) == 2
     assert decisions[0].idea_id == 1
-    assert decisions[0].decision == "approve"
+    assert decisions[0].decision == "triage"
     assert decisions[0].rejection_reason is None
     assert decisions[1].idea_id == 2
     assert decisions[1].decision == "reject"
@@ -120,18 +120,18 @@ def test_triage_ideas_with_llm_mixed():
 
 def test_triage_ideas_with_llm_markdown_fenced():
     ideas = [_make_idea(10, raw_quote="Some quote")]
-    response = '```json\n[{"id": 10, "decision": "approve"}]\n```'
+    response = '```json\n[{"id": 10, "decision": "triage"}]\n```'
     mock = _mock_urlopen(_gemini_response(response))
     with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
         decisions = triage_ideas_with_llm("fake-key", "Book", "Author", ideas)
     assert len(decisions) == 1
-    assert decisions[0].decision == "approve"
+    assert decisions[0].decision == "triage"
 
 
 def test_triage_ideas_with_llm_unknown_id_skipped():
     ideas = [_make_idea(1)]
     response = json.dumps([
-        {"id": 1, "decision": "approve"},
+        {"id": 1, "decision": "triage"},
         {"id": 999, "decision": "reject", "rejection_reason": "unknown"},
     ])
     mock = _mock_urlopen(_gemini_response(response))
@@ -144,17 +144,17 @@ def test_triage_ideas_with_llm_unknown_id_skipped():
 def test_triage_ideas_with_llm_invalid_decision_defaults_to_approve():
     ideas = [_make_idea(1), _make_idea(2)]
     response = json.dumps([
-        {"id": 1, "decision": "approve"},
+        {"id": 1, "decision": "triage"},
         {"id": 2, "decision": "maybe"},
     ])
     mock = _mock_urlopen(_gemini_response(response))
     with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
         decisions = triage_ideas_with_llm("fake-key", "Book", "Author", ideas)
-    # idea 2 had invalid decision, so it's treated as omitted → default approve
+    # idea 2 had invalid decision, so it's treated as omitted → default triage
     assert len(decisions) == 2
     by_id = {d.idea_id: d for d in decisions}
-    assert by_id[1].decision == "approve"
-    assert by_id[2].decision == "approve"
+    assert by_id[1].decision == "triage"
+    assert by_id[2].decision == "triage"
 
 
 def test_triage_ideas_with_llm_omitted_ids_default_to_approve():
@@ -168,21 +168,21 @@ def test_triage_ideas_with_llm_omitted_ids_default_to_approve():
     assert len(decisions) == 3
     by_id = {d.idea_id: d for d in decisions}
     assert by_id[1].decision == "reject"
-    assert by_id[2].decision == "approve"
-    assert by_id[3].decision == "approve"
+    assert by_id[2].decision == "triage"
+    assert by_id[3].decision == "triage"
 
 
 def test_triage_ideas_with_llm_duplicate_id_skipped():
     ideas = [_make_idea(1)]
     response = json.dumps([
-        {"id": 1, "decision": "approve"},
+        {"id": 1, "decision": "triage"},
         {"id": 1, "decision": "reject", "rejection_reason": "changed my mind"},
     ])
     mock = _mock_urlopen(_gemini_response(response))
     with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
         decisions = triage_ideas_with_llm("fake-key", "Book", "Author", ideas)
     assert len(decisions) == 1
-    assert decisions[0].decision == "approve"
+    assert decisions[0].decision == "triage"
 
 
 def test_triage_ideas_with_llm_content_too_large():
@@ -194,16 +194,16 @@ def test_triage_ideas_with_llm_content_too_large():
 # --- review_ideas_with_llm tests ---
 
 
-def _make_approved_idea(idea_id: int, raw_quote: str = "quote", raw_note: str | None = None) -> Idea:
+def _make_triaged_idea(idea_id: int, raw_quote: str = "quote", raw_note: str | None = None) -> Idea:
     return Idea(
-        id=idea_id, book_id=1, source_id=1, status=IdeaStatus.approved,
+        id=idea_id, book_id=1, source_id=1, status=IdeaStatus.triaged,
         raw_quote=raw_quote, raw_note=raw_note,
         created_at="2026-01-01T00:00:00", updated_at="2026-01-01T00:00:00",
     )
 
 
 def test_review_ideas_with_llm_happy_path():
-    ideas = [_make_approved_idea(1, raw_quote="A long original quote from the book")]
+    ideas = [_make_triaged_idea(1, raw_quote="A long original quote from the book")]
     response = json.dumps([
         {
             "id": 1,
@@ -223,7 +223,7 @@ def test_review_ideas_with_llm_happy_path():
 
 
 def test_review_ideas_with_llm_unknown_id_skipped():
-    ideas = [_make_approved_idea(1)]
+    ideas = [_make_triaged_idea(1)]
     response = json.dumps([
         {"id": 1, "reviewed_quote": "Q", "reviewed_quote_emphasis": None, "reviewed_comment": "C"},
         {"id": 999, "reviewed_quote": "X", "reviewed_quote_emphasis": None, "reviewed_comment": "Y"},
@@ -236,7 +236,7 @@ def test_review_ideas_with_llm_unknown_id_skipped():
 
 
 def test_review_ideas_with_llm_omitted_ids_not_defaulted():
-    ideas = [_make_approved_idea(1), _make_approved_idea(2), _make_approved_idea(3)]
+    ideas = [_make_triaged_idea(1), _make_triaged_idea(2), _make_triaged_idea(3)]
     response = json.dumps([
         {"id": 1, "reviewed_quote": "Q1", "reviewed_quote_emphasis": None, "reviewed_comment": "C1"},
     ])
@@ -249,7 +249,7 @@ def test_review_ideas_with_llm_omitted_ids_not_defaulted():
 
 
 def test_review_ideas_with_llm_content_too_large():
-    ideas = [_make_approved_idea(1, raw_quote="x" * 10000)]
+    ideas = [_make_triaged_idea(1, raw_quote="x" * 10000)]
     with pytest.raises(ContentTooLargeError, match="Review prompt too large"):
         review_ideas_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)
 

@@ -4,7 +4,7 @@ import pytest
 
 from anne.services.books import create_book
 from anne.services.ideas import (
-    approve_idea,
+    triage_approve_idea,
     caption_idea,
     get_ideas_by_status,
     get_unparsed_sources,
@@ -94,8 +94,8 @@ def test_get_ideas_by_status(tmp_db: sqlite3.Connection):
     ])
     parsed = get_ideas_by_status(tmp_db, book.id, IdeaStatus.parsed)
     assert len(parsed) == 2
-    approved = get_ideas_by_status(tmp_db, book.id, IdeaStatus.approved)
-    assert len(approved) == 0
+    triaged = get_ideas_by_status(tmp_db, book.id, IdeaStatus.triaged)
+    assert len(triaged) == 0
 
 
 def test_get_ideas_by_status_empty(tmp_db: sqlite3.Connection):
@@ -104,14 +104,14 @@ def test_get_ideas_by_status_empty(tmp_db: sqlite3.Connection):
     assert result == []
 
 
-def test_approve_idea(tmp_db: sqlite3.Connection):
+def test_triage_approve_idea(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     original_updated = ideas[0].updated_at
 
-    approved = approve_idea(tmp_db, ideas[0].id)
-    assert approved.status == IdeaStatus.approved
-    assert approved.updated_at >= original_updated
+    triaged = triage_approve_idea(tmp_db, ideas[0].id)
+    assert triaged.status == IdeaStatus.triaged
+    assert triaged.updated_at >= original_updated
 
 
 def test_reject_idea(tmp_db: sqlite3.Connection):
@@ -128,23 +128,23 @@ def test_reject_idea_not_found(tmp_db: sqlite3.Connection):
         reject_idea(tmp_db, 9999, "reason")
 
 
-def test_approve_idea_not_found(tmp_db: sqlite3.Connection):
+def test_triage_approve_idea_not_found(tmp_db: sqlite3.Connection):
     with pytest.raises(ValueError, match="Idea not found"):
-        approve_idea(tmp_db, 9999)
+        triage_approve_idea(tmp_db, 9999)
 
 
-def test_approve_idea_already_rejected(tmp_db: sqlite3.Connection):
+def test_triage_approve_idea_already_rejected(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     reject_idea(tmp_db, ideas[0].id, "test")
     with pytest.raises(ValueError, match="not in parsed status"):
-        approve_idea(tmp_db, ideas[0].id)
+        triage_approve_idea(tmp_db, ideas[0].id)
 
 
 def test_reject_idea_already_approved(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
-    approve_idea(tmp_db, ideas[0].id)
+    triage_approve_idea(tmp_db, ideas[0].id)
     with pytest.raises(ValueError, match="not in parsed status"):
         reject_idea(tmp_db, ideas[0].id, "too late")
 
@@ -152,7 +152,7 @@ def test_reject_idea_already_approved(tmp_db: sqlite3.Connection):
 def test_review_idea(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Original quote", raw_note="A note")])
-    approve_idea(tmp_db, ideas[0].id)
+    triage_approve_idea(tmp_db, ideas[0].id)
 
     reviewed = review_idea(
         tmp_db, ideas[0].id,
@@ -173,19 +173,19 @@ def test_review_idea_not_approved(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     # Still in 'parsed' status
-    with pytest.raises(ValueError, match="not in approved status"):
+    with pytest.raises(ValueError, match="not in triaged status"):
         review_idea(tmp_db, ideas[0].id, "q", None, "c")
 
 
 def test_review_idea_not_found(tmp_db: sqlite3.Connection):
-    with pytest.raises(ValueError, match="not in approved status"):
+    with pytest.raises(ValueError, match="not in triaged status"):
         review_idea(tmp_db, 9999, "q", None, "c")
 
 
 def test_review_idea_emphasis_null(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
-    approve_idea(tmp_db, ideas[0].id)
+    triage_approve_idea(tmp_db, ideas[0].id)
 
     reviewed = review_idea(tmp_db, ideas[0].id, "Short Q", None, "Context.")
     assert reviewed.reviewed_quote_emphasis is None
@@ -195,7 +195,7 @@ def test_review_idea_emphasis_null(tmp_db: sqlite3.Connection):
 def test_caption_idea(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Original quote")])
-    approve_idea(tmp_db, ideas[0].id)
+    triage_approve_idea(tmp_db, ideas[0].id)
     review_idea(tmp_db, ideas[0].id, "Short quote", "**Short** quote", "Context.")
 
     captioned = caption_idea(
@@ -214,8 +214,8 @@ def test_caption_idea(tmp_db: sqlite3.Connection):
 def test_caption_idea_not_reviewed(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
-    approve_idea(tmp_db, ideas[0].id)
-    # Still in 'approved' status, not reviewed
+    triage_approve_idea(tmp_db, ideas[0].id)
+    # Still in 'triaged' status, not reviewed
     with pytest.raises(ValueError, match="not in reviewed status"):
         caption_idea(tmp_db, ideas[0].id, "caption", "[]")
 
@@ -228,7 +228,7 @@ def test_caption_idea_not_found(tmp_db: sqlite3.Connection):
 def test_caption_idea_invalid_tags_json(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
-    approve_idea(tmp_db, ideas[0].id)
+    triage_approve_idea(tmp_db, ideas[0].id)
     review_idea(tmp_db, ideas[0].id, "Q", None, "C")
     with pytest.raises(ValueError, match="tags must be valid JSON"):
         caption_idea(tmp_db, ideas[0].id, "caption", "not json")
@@ -237,7 +237,7 @@ def test_caption_idea_invalid_tags_json(tmp_db: sqlite3.Connection):
 def test_caption_idea_tags_not_array(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
-    approve_idea(tmp_db, ideas[0].id)
+    triage_approve_idea(tmp_db, ideas[0].id)
     review_idea(tmp_db, ideas[0].id, "Q", None, "C")
     with pytest.raises(ValueError, match="tags must be a JSON array"):
         caption_idea(tmp_db, ideas[0].id, "caption", '{"not": "array"}')

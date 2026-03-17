@@ -10,7 +10,7 @@ from anne.config.settings import load_settings
 from anne.db.connection import get_connection
 from anne.models import Book, Idea, IdeaStatus, Source, SourceType
 from anne.services.books import get_book, list_books
-from anne.services.ideas import approve_idea, caption_idea, get_ideas_by_status, get_unparsed_sources, insert_ideas, reject_idea, review_idea
+from anne.services.ideas import triage_approve_idea, caption_idea, get_ideas_by_status, get_unparsed_sources, insert_ideas, reject_idea, review_idea
 from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
 from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm
 
@@ -116,7 +116,7 @@ def idea_parse(
 def idea_triage(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to triage all books)"),
 ) -> None:
-    """Triage parsed ideas: approve or reject using LLM."""
+    """Triage parsed ideas: triage or reject using LLM."""
     settings = load_settings()
     api_key = settings.gemini_api_key
     if not api_key:
@@ -133,7 +133,7 @@ def idea_triage(
         else:
             books = list_books(conn)
 
-    total_approved = 0
+    total_triaged = 0
     total_rejected = 0
     for book in books:
         rprint(f"[bold]{book.title}[/bold]")
@@ -161,11 +161,11 @@ def idea_triage(
                     ideas_by_id = {idea.id: idea for idea in chunk}
                     for d in decisions:
                         idea = ideas_by_id.get(d.idea_id)
-                        if d.decision == "approve":
-                            approve_idea(conn, d.idea_id)
-                            total_approved += 1
+                        if d.decision == "triage":
+                            triage_approve_idea(conn, d.idea_id)
+                            total_triaged += 1
                             preview = _idea_preview(idea) if idea else ""
-                            rprint(f"  [green]Approved[/green] idea {d.idea_id}{preview}")
+                            rprint(f"  [green]Triaged[/green] idea {d.idea_id}{preview}")
                         elif d.decision == "reject":
                             reject_idea(conn, d.idea_id, d.rejection_reason)
                             total_rejected += 1
@@ -182,14 +182,14 @@ def idea_triage(
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 
-    label = "idea" if total_approved + total_rejected == 1 else "ideas"
-    rprint(f"\n[bold]Total: {total_approved} approved, {total_rejected} rejected ({total_approved + total_rejected} {label})[/bold]")
+    label = "idea" if total_triaged + total_rejected == 1 else "ideas"
+    rprint(f"\n[bold]Total: {total_triaged} triaged, {total_rejected} rejected ({total_triaged + total_rejected} {label})[/bold]")
 
 
 def idea_review(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to review all books)"),
 ) -> None:
-    """Review approved ideas: refine quotes and add factual context using LLM."""
+    """Review triaged ideas: refine quotes and add factual context using LLM."""
     settings = load_settings()
     api_key = settings.gemini_api_key
     if not api_key:
@@ -211,14 +211,14 @@ def idea_review(
         rprint(f"[bold]{book.title}[/bold]")
         try:
             with get_connection(settings.db_path) as conn:
-                approved_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.approved)
-                if not approved_ideas:
-                    rprint(f"  [dim]{book.title}: no approved ideas to review[/dim]")
+                triaged_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.triaged)
+                if not triaged_ideas:
+                    rprint(f"  [dim]{book.title}: no triaged ideas to review[/dim]")
                     continue
 
                 chunks = [
-                    approved_ideas[i : i + settings.review_chunk_size]
-                    for i in range(0, len(approved_ideas), settings.review_chunk_size)
+                    triaged_ideas[i : i + settings.review_chunk_size]
+                    for i in range(0, len(triaged_ideas), settings.review_chunk_size)
                 ]
                 for chunk in chunks:
                     results = review_ideas_with_llm(

@@ -168,7 +168,7 @@ def parse_essay_with_llm(api_key: str, content: str, max_input_tokens: int = _DE
 @dataclass
 class TriageDecision:
     idea_id: int
-    decision: Literal["approve", "reject"]
+    decision: Literal["triage", "reject"]
     rejection_reason: str | None = None
 
 
@@ -192,7 +192,7 @@ characters that carry no deeper meaning
 - Passages that only make sense with heavy surrounding context and couldn't stand \
 alone even with editing
 
-APPROVE items that have at least one of:
+TRIAGE as kept items that have at least one of:
 - A genuine insight, reflection, or opinion worth sharing
 - Emotional resonance or a universal theme readers would connect with
 - A striking or memorable quote from the author
@@ -201,7 +201,7 @@ or that would be catchy for social media
 - A thought-provoking observation, even if brief or incomplete — later pipeline \
 stages will refine it
 
-When in doubt, lean toward approving — but don't approve everything just to be safe.
+When in doubt, lean toward triaging to keep — but don't keep everything just to be safe.
 {volume_warning}
 For each rejected item, provide a brief rejection_reason.
 
@@ -210,15 +210,15 @@ Input ideas (JSON array):
 
 Return ONLY a JSON array (no markdown fences, no extra text). Example:
 [
-  {{"id": 1, "decision": "approve"}},
+  {{"id": 1, "decision": "triage"}},
   {{"id": 2, "decision": "reject", "rejection_reason": "character gossip, no insight"}}
 ]
 """
 
 _VOLUME_WARNING = """\
 IMPORTANT: This book has {total_ideas} total highlights, which is a lot. Be more \
-selective — if you approve nearly everything, the pipeline becomes unmanageable. \
-Only approve highlights that genuinely stand out. It's OK to reject a majority."""
+selective — if you triage nearly everything, the pipeline becomes unmanageable. \
+Only triage highlights that genuinely stand out. It's OK to reject a majority."""
 
 
 def triage_ideas_with_llm(
@@ -230,7 +230,7 @@ def triage_ideas_with_llm(
     max_input_tokens: int = 7500,
     min_interval: int = 10,
 ) -> list[TriageDecision]:
-    """Triage parsed ideas using Gemini. Returns list of approve/reject decisions."""
+    """Triage parsed ideas using Gemini. Returns list of triage/reject decisions."""
     valid_ids = {idea.id for idea in ideas}
     ideas_json = json.dumps(
         [
@@ -287,7 +287,7 @@ def triage_ideas_with_llm(
         if idea_id in seen_ids:
             logger.warning("Triage: skipping duplicate idea id %s", idea_id)
             continue
-        if decision not in ("approve", "reject"):
+        if decision not in ("triage", "reject"):
             logger.warning("Triage: skipping invalid decision '%s' for idea %s", decision, idea_id)
             continue
         seen_ids.add(idea_id)
@@ -298,14 +298,14 @@ def triage_ideas_with_llm(
                 rejection_reason=item.get("rejection_reason") if decision == "reject" else None,
             )
         )
-    # Default omitted ideas to approve (lenient triage: when in doubt, approve).
+    # Default omitted ideas to triage (lenient triage: when in doubt, keep).
     # NOTE: review_ideas_with_llm intentionally does NOT default omitted ideas — review
-    # produces content fields that have no safe default, so omitted ideas stay approved.
+    # produces content fields that have no safe default, so omitted ideas stay triaged.
     missing_ids = valid_ids - seen_ids
     if missing_ids:
-        logger.warning("Triage: LLM omitted %d idea(s), defaulting to approve: %s", len(missing_ids), missing_ids)
+        logger.warning("Triage: LLM omitted %d idea(s), defaulting to triage: %s", len(missing_ids), missing_ids)
         for idea_id in sorted(missing_ids):
-            decisions.append(TriageDecision(idea_id=idea_id, decision="approve"))
+            decisions.append(TriageDecision(idea_id=idea_id, decision="triage"))
     return decisions
 
 
@@ -374,7 +374,7 @@ def review_ideas_with_llm(
     max_input_tokens: int = 7500,
     min_interval: int = 10,
 ) -> list[ReviewResult]:
-    """Review approved ideas using Gemini. Returns list of review results."""
+    """Review triaged ideas using Gemini. Returns list of review results."""
     valid_ids = {idea.id for idea in ideas}
     ideas_json = json.dumps(
         [
@@ -443,7 +443,7 @@ def review_ideas_with_llm(
 
     missing_ids = valid_ids - seen_ids
     if missing_ids:
-        logger.warning("Review: LLM omitted %d idea(s), they will stay approved: %s", len(missing_ids), missing_ids)
+        logger.warning("Review: LLM omitted %d idea(s), they will stay triaged: %s", len(missing_ids), missing_ids)
 
     return results
 
