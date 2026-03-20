@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 
+from anne.models import Source, SourceType
+
 
 @dataclass
 class ParsedIdea:
@@ -206,6 +208,26 @@ class _ContentExtractor(HTMLParser):
     def get_text(self) -> str:
         self._flush_line()
         return "\n".join(self._text_parts)
+
+
+LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
+
+
+def parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:
+    """Parse a source file into ideas, dispatching by source type."""
+    from anne.services.llm import parse_essay_with_llm
+
+    source_type = SourceType(source.type)
+    if source_type == SourceType.kindle_export_html:
+        return parse_kindle_export_html(content)
+    elif source_type in LLM_TYPES:
+        if not api_key:
+            raise ValueError("gemini_api_key is required for LLM-assisted parsing")
+        if source_type == SourceType.essay_html:
+            content = extract_html_content(content)
+        return parse_essay_with_llm(api_key, content, max_input_tokens=max_input_tokens)
+    else:
+        return []
 
 
 def extract_html_content(content: str) -> str:

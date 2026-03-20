@@ -247,6 +247,97 @@ def tagged_workspace_app(tui_settings: Settings) -> WorkspaceTestApp:
     return WorkspaceTestApp(tui_settings, book_obj)
 
 
+class TestWorkspaceActionMenu:
+    async def test_action_menu_opens_for_parsed(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing A on a parsed idea shows the action modal with 'Triage with LLM'."""
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+            assert idea.status == IdeaStatus.parsed
+
+            await pilot.press("A")
+            await pilot.pause()
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(workspace_app.screen, ActionModal)
+
+            from textual.widgets import RadioButton
+            buttons = workspace_app.screen.query(RadioButton)
+            labels = [str(b.label) for b in buttons]
+            assert "Triage with LLM" in labels
+
+    async def test_action_menu_shows_review_for_triaged(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing A on a triaged idea shows 'Review with LLM'."""
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            # Triage the idea first
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("A")
+            await pilot.pause()
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(workspace_app.screen, ActionModal)
+
+            from textual.widgets import RadioButton
+            buttons = workspace_app.screen.query(RadioButton)
+            labels = [str(b.label) for b in buttons]
+            assert "Review with LLM" in labels
+
+    async def test_action_menu_shows_caption_for_reviewed(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing A on a reviewed idea shows 'Caption with LLM'."""
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+                review_idea(conn, idea.id, "Refined quote", None, "Context")
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("A")
+            await pilot.pause()
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(workspace_app.screen, ActionModal)
+
+            from textual.widgets import RadioButton
+            buttons = workspace_app.screen.query(RadioButton)
+            labels = [str(b.label) for b in buttons]
+            assert "Caption with LLM" in labels
+
+    async def test_action_menu_notifies_no_actions_for_rejected(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing A on a rejected idea shows a warning notification, no modal."""
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                reject_idea(conn, idea.id, "test")
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("A")
+            await pilot.pause()
+            # Should NOT open a modal — should stay on workspace
+            from anne.tui.screens.workspace import BookWorkspaceScreen
+            assert isinstance(workspace_app.screen, BookWorkspaceScreen)
+
+
 class TestTagFilter:
     async def test_tag_filter_modal_opens(self, tagged_workspace_app: WorkspaceTestApp) -> None:
         async with tagged_workspace_app.run_test() as pilot:

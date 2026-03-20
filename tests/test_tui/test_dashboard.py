@@ -16,6 +16,28 @@ def empty_app(empty_settings: Settings) -> AnneApp:
     return AnneApp(empty_settings)
 
 
+class TestDashboardActionMenu:
+    async def test_action_menu_opens(self, app: AnneApp) -> None:
+        async with app.run_test() as pilot:
+            await wait_for_workers(app)
+            await pilot.press("A")
+            await pilot.pause()
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(app.screen, ActionModal)
+
+    async def test_action_menu_escape_cancels(self, app: AnneApp) -> None:
+        async with app.run_test() as pilot:
+            await wait_for_workers(app)
+            await pilot.press("A")
+            await pilot.pause()
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(app.screen, ActionModal)
+            await pilot.press("escape")
+            await pilot.pause()
+            from anne.tui.screens.dashboard import DashboardScreen
+            assert isinstance(app.screen, DashboardScreen)
+
+
 class TestDashboard:
     async def test_dashboard_loads_with_books(self, app: AnneApp) -> None:
         async with app.run_test() as pilot:

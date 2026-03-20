@@ -14,6 +14,9 @@ _COMMON_KEYS = """
   f    filter status
   T    filter tag
   /    search
+
+[bold]Pipeline[/bold]
+  A    LLM actions
 """
 
 _STATUS_ACTIONS: dict[str, str] = {

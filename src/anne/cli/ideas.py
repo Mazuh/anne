@@ -27,10 +27,8 @@ from anne.services.ideas import (
     review_idea,
     update_idea,
 )
-from anne.services.parsers import ParsedIdea, parse_kindle_export_html, extract_html_content
+from anne.services.parsers import LLM_TYPES, ParsedIdea, parse_kindle_export_html, extract_html_content, parse_source
 from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm
-
-LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
 
 ideas_app = typer.Typer(help="Browse and manage ideas.")
 console = Console()
@@ -231,18 +229,10 @@ def edit(
 
 
 def _parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:
-    source_type = SourceType(source.type)
-    if source_type == SourceType.kindle_export_html:
-        return parse_kindle_export_html(content)
-    elif source_type in LLM_TYPES:
-        if not api_key:
-            raise ValueError("gemini_api_key is required for LLM-assisted parsing")
-        if source_type == SourceType.essay_html:
-            content = extract_html_content(content)
-        return parse_essay_with_llm(api_key, content, max_input_tokens=max_input_tokens)
-    else:
-        rprint(f"  [yellow]Warning:[/yellow] unknown source type '{source_type}', skipping")
-        return []
+    ideas = parse_source(source, content, api_key, max_input_tokens)
+    if not ideas and SourceType(source.type) not in LLM_TYPES and SourceType(source.type) != SourceType.kindle_export_html:
+        rprint(f"  [yellow]Warning:[/yellow] unknown source type '{source.type}', skipping")
+    return ideas
 
 
 def _parse_book(

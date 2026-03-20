@@ -31,6 +31,7 @@ class BookWorkspaceScreen(Screen):
         Binding("E", "open_editor", "Editor", show=False),
         Binding("f", "filter_status", "Filter"),
         Binding("T", "filter_tag", "Tag filter"),
+        Binding("A", "action_menu", "Actions"),
         Binding("slash", "search", "Search"),
         Binding("q", "go_back", "Back"),
     ]
@@ -366,3 +367,177 @@ class BookWorkspaceScreen(Screen):
 
         if new_value != current:
             self._do_edit(idea_id, field, new_value)
+
+    # Action menu (LLM pipeline per-idea)
+    _LLM_ACTION_FOR_STATUS: dict[str, str] = {
+        "parsed": "Triage with LLM",
+        "triaged": "Review with LLM",
+        "reviewed": "Caption with LLM",
+    }
+
+    _LLM_ACTION_DESCRIPTIONS: dict[str, str] = {
+        "Triage with LLM": "Use LLM to approve or reject this idea",
+        "Review with LLM": "Refine quote and add context with LLM",
+        "Caption with LLM": "Generate Instagram caption with LLM",
+    }
+
+    def action_action_menu(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+
+        action_label = self._LLM_ACTION_FOR_STATUS.get(idea.status)
+        if not action_label:
+            self.notify("No LLM actions available for this status.", severity="warning")
+            return
+
+        from anne.tui.modals.action_menu import ActionModal
+        self.app.push_screen(
+            ActionModal("LLM Actions", [action_label], self._LLM_ACTION_DESCRIPTIONS),
+            callback=lambda result: self._on_llm_action_selected(idea.id, result),
+        )
+
+    def _on_llm_action_selected(self, idea_id: int, action: str | None) -> None:
+        if action == "Triage with LLM":
+            self._run_llm_triage(idea_id)
+        elif action == "Review with LLM":
+            self._run_llm_review(idea_id)
+        elif action == "Caption with LLM":
+            self._run_llm_caption(idea_id)
+
+    @work(thread=True)
+    def _run_llm_triage(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_idea, triage_approve_idea, reject_idea
+        from anne.services.llm import triage_ideas_with_llm
+
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        try:
+            with get_connection(settings.db_path) as conn:
+                idea = get_idea(conn, idea_id)
+                if not idea or idea.status != IdeaStatus.parsed:
+                    self.app.call_from_thread(
+                        self.notify, f"Idea {idea_id} is no longer in parsed status.", severity="error",
+                    )
+                    return
+
+                decisions = triage_ideas_with_llm(
+                    api_key=api_key,
+                    book_title=self._book.title,
+                    book_author=self._book.author,
+                    ideas=[idea],
+                    total_ideas=1,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    min_interval=settings.llm_call_interval,
+                )
+                for d in decisions:
+                    if d.decision == "triage":
+                        triage_approve_idea(conn, d.idea_id)
+                        self.app.call_from_thread(self.notify, f"Idea {d.idea_id} triaged by LLM.")
+                    elif d.decision == "reject":
+                        reject_idea(conn, d.idea_id, d.rejection_reason)
+                        self.app.call_from_thread(self.notify, f"Idea {d.idea_id} rejected by LLM.")
+                    conn.commit()
+
+            self._load_ideas(select_idea_id=idea_id)
+        except Exception as e:
+            self.app.call_from_thread(self.notify, _llm_error_message(e), severity="error")
+
+    @work(thread=True)
+    def _run_llm_review(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_idea, review_idea
+        from anne.services.llm import review_ideas_with_llm
+
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        try:
+            with get_connection(settings.db_path) as conn:
+                idea = get_idea(conn, idea_id)
+                if not idea or idea.status != IdeaStatus.triaged:
+                    self.app.call_from_thread(
+                        self.notify, f"Idea {idea_id} is no longer in triaged status.", severity="error",
+                    )
+                    return
+
+                results = review_ideas_with_llm(
+                    api_key=api_key,
+                    book_title=self._book.title,
+                    book_author=self._book.author,
+                    ideas=[idea],
+                    content_language=settings.content_language,
+                    quote_target_length=settings.review_quote_target_length,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    min_interval=settings.llm_call_interval,
+                )
+                for r in results:
+                    review_idea(conn, r.idea_id, r.reviewed_quote, r.reviewed_quote_emphasis, r.reviewed_comment)
+                    self.app.call_from_thread(self.notify, f"Idea {r.idea_id} reviewed by LLM.")
+                conn.commit()
+
+            self._load_ideas(select_idea_id=idea_id)
+        except Exception as e:
+            self.app.call_from_thread(self.notify, _llm_error_message(e), severity="error")
+
+    @work(thread=True)
+    def _run_llm_caption(self, idea_id: int) -> None:
+        import json
+
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_idea, caption_idea
+        from anne.services.llm import caption_ideas_with_llm
+
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        try:
+            with get_connection(settings.db_path) as conn:
+                idea = get_idea(conn, idea_id)
+                if not idea or idea.status != IdeaStatus.reviewed:
+                    self.app.call_from_thread(
+                        self.notify, f"Idea {idea_id} is no longer in reviewed status.", severity="error",
+                    )
+                    return
+
+                results = caption_ideas_with_llm(
+                    api_key=api_key,
+                    book_title=self._book.title,
+                    book_author=self._book.author,
+                    ideas=[idea],
+                    content_language=settings.content_language,
+                    cta_link=settings.cta_link,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    min_interval=settings.llm_call_interval,
+                )
+                for r in results:
+                    caption_idea(conn, r.idea_id, r.presentation_text, json.dumps(r.tags, ensure_ascii=False))
+                    self.app.call_from_thread(self.notify, f"Idea {r.idea_id} captioned by LLM.")
+                conn.commit()
+
+            self._load_ideas(select_idea_id=idea_id)
+        except Exception as e:
+            self.app.call_from_thread(self.notify, _llm_error_message(e), severity="error")
+
+
+def _llm_error_message(e: Exception) -> str:
+    from anne.services.llm import ContentTooLargeError, RateLimitError
+    if isinstance(e, RateLimitError):
+        return "Rate limited by Gemini API. Wait and retry."
+    elif isinstance(e, ContentTooLargeError):
+        return str(e)
+    elif isinstance(e, ValueError):
+        return str(e)
+    return f"Error: {e}"
