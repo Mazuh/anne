@@ -1,10 +1,20 @@
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
+from textual.events import Key
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, RadioButton, RadioSet
+from textual.widgets import Label, RadioButton, RadioSet, Static
 
 from anne.models import IdeaStatus
+
+_STATUS_DESCRIPTIONS: dict[str, str] = {
+    "All": "Show all ideas regardless of status",
+    "parsed": "Freshly extracted from source, awaiting triage",
+    "triaged": "Approved during triage, awaiting review",
+    "reviewed": "Quote refined and context added, awaiting caption",
+    "ready": "Caption generated, ready for publishing",
+    "rejected": "Dismissed during triage (reversible)",
+}
 
 
 class FilterModal(ModalScreen[IdeaStatus | None]):
@@ -18,7 +28,7 @@ class FilterModal(ModalScreen[IdeaStatus | None]):
     }
 
     FilterModal > Vertical {
-        width: 40;
+        width: 50;
         height: auto;
         background: $surface;
         border: thick $primary;
@@ -35,8 +45,15 @@ class FilterModal(ModalScreen[IdeaStatus | None]):
         margin-bottom: 1;
     }
 
-    FilterModal Button {
-        margin: 0 1;
+    FilterModal .hint {
+        color: $text-muted;
+        width: 100%;
+    }
+
+    FilterModal .status-desc {
+        color: $text-muted;
+        margin: 0 0 0 4;
+        width: 100%;
     }
     """
 
@@ -50,25 +67,40 @@ class FilterModal(ModalScreen[IdeaStatus | None]):
         with Vertical():
             yield Label("[bold]Filter by status[/bold]")
             current_value = self._current_filter.value if self._current_filter else "All"
-            yield RadioSet(
+            radio_set = RadioSet(
                 *[RadioButton(opt, value=(opt == current_value)) for opt in self._OPTIONS],
                 id="filter-radio",
             )
-            with Horizontal():
-                yield Button("Apply", variant="primary", id="apply-btn")
-                yield Button("Cancel", variant="default", id="cancel-btn")
+            yield radio_set
+            yield Static("", id="status-desc", classes="status-desc")
+            yield Static("Space to select, Enter to apply, Esc to cancel", classes="hint")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "apply-btn":
-            radio_set = self.query_one("#filter-radio", RadioSet)
-            idx = radio_set.pressed_index
-            if idx is None or idx == 0:
-                self.dismiss(None)
-            else:
-                status_value = self._OPTIONS[idx]
-                self.dismiss(IdeaStatus(status_value))
+    def on_mount(self) -> None:
+        self._update_description()
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        self._update_description()
+
+    def _update_description(self) -> None:
+        radio_set = self.query_one("#filter-radio", RadioSet)
+        idx = radio_set.pressed_index
+        if idx is not None and idx < len(self._OPTIONS):
+            desc = _STATUS_DESCRIPTIONS.get(self._OPTIONS[idx], "")
+            self.query_one("#status-desc", Static).update(desc)
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "enter":
+            event.stop()
+            event.prevent_default()
+            self._apply()
+
+    def _apply(self) -> None:
+        radio_set = self.query_one("#filter-radio", RadioSet)
+        idx = radio_set.pressed_index
+        if idx is None or idx == 0:
+            self.dismiss(None)
         else:
-            self.dismiss(self._current_filter)
+            self.dismiss(IdeaStatus(self._OPTIONS[idx]))
 
     def action_cancel(self) -> None:
         self.dismiss(self._current_filter)

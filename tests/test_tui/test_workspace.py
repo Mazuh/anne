@@ -272,12 +272,11 @@ class TestTagFilter:
             assert isinstance(tagged_workspace_app.screen, TagFilterModal)
 
             from textual.widgets import RadioButton
-            # Options: All, ethics, philosophy, power — click "ethics" (index 1)
+            # Options: All, ethics, philosophy, power — select "ethics" (index 1)
             buttons = tagged_workspace_app.screen.query(RadioButton)
             await pilot.click(buttons[1])  # "ethics"
             await pilot.pause()
-            apply_btn = tagged_workspace_app.screen.query_one("#apply-btn", Button)
-            await pilot.click(apply_btn)
+            await pilot.press("enter")  # apply
             await wait_for_workers(tagged_workspace_app)
 
             idea_list = tagged_workspace_app.screen.query_one("#idea-list", IdeaList)
