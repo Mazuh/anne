@@ -409,8 +409,7 @@ class BookWorkspaceScreen(Screen):
     @work(thread=True)
     def _run_llm_triage(self, idea_id: int) -> None:
         from anne.db.connection import get_connection
-        from anne.services.ideas import get_idea, triage_approve_idea, reject_idea
-        from anne.services.llm import triage_ideas_with_llm
+        from anne.services.pipeline import format_llm_error, triage_single_idea
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -420,40 +419,25 @@ class BookWorkspaceScreen(Screen):
 
         try:
             with get_connection(settings.db_path) as conn:
-                idea = get_idea(conn, idea_id)
-                if not idea or idea.status != IdeaStatus.parsed:
-                    self.app.call_from_thread(
-                        self.notify, f"Idea {idea_id} is no longer in parsed status.", severity="error",
-                    )
-                    return
-
-                decisions = triage_ideas_with_llm(
+                outcome = triage_single_idea(
+                    conn,
                     api_key=api_key,
                     book_title=self._book.title,
                     book_author=self._book.author,
-                    ideas=[idea],
-                    total_ideas=1,
+                    idea_id=idea_id,
                     max_input_tokens=settings.max_llm_input_tokens,
-                    min_interval=settings.llm_call_interval,
+                    llm_call_interval=settings.llm_call_interval,
                 )
-                for d in decisions:
-                    if d.decision == "triage":
-                        triage_approve_idea(conn, d.idea_id)
-                        self.app.call_from_thread(self.notify, f"Idea {d.idea_id} triaged by LLM.")
-                    elif d.decision == "reject":
-                        reject_idea(conn, d.idea_id, d.rejection_reason)
-                        self.app.call_from_thread(self.notify, f"Idea {d.idea_id} rejected by LLM.")
-                    conn.commit()
+                self.app.call_from_thread(self.notify, f"Idea {idea_id} {outcome} by LLM.")
 
             self._load_ideas(select_idea_id=idea_id)
         except Exception as e:
-            self.app.call_from_thread(self.notify, _llm_error_message(e), severity="error")
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
 
     @work(thread=True)
     def _run_llm_review(self, idea_id: int) -> None:
         from anne.db.connection import get_connection
-        from anne.services.ideas import get_idea, review_idea
-        from anne.services.llm import review_ideas_with_llm
+        from anne.services.pipeline import format_llm_error, review_single_idea
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -463,39 +447,27 @@ class BookWorkspaceScreen(Screen):
 
         try:
             with get_connection(settings.db_path) as conn:
-                idea = get_idea(conn, idea_id)
-                if not idea or idea.status != IdeaStatus.triaged:
-                    self.app.call_from_thread(
-                        self.notify, f"Idea {idea_id} is no longer in triaged status.", severity="error",
-                    )
-                    return
-
-                results = review_ideas_with_llm(
+                review_single_idea(
+                    conn,
                     api_key=api_key,
                     book_title=self._book.title,
                     book_author=self._book.author,
-                    ideas=[idea],
+                    idea_id=idea_id,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    llm_call_interval=settings.llm_call_interval,
                     content_language=settings.content_language,
                     quote_target_length=settings.review_quote_target_length,
-                    max_input_tokens=settings.max_llm_input_tokens,
-                    min_interval=settings.llm_call_interval,
                 )
-                for r in results:
-                    review_idea(conn, r.idea_id, r.reviewed_quote, r.reviewed_quote_emphasis, r.reviewed_comment)
-                    self.app.call_from_thread(self.notify, f"Idea {r.idea_id} reviewed by LLM.")
-                conn.commit()
+                self.app.call_from_thread(self.notify, f"Idea {idea_id} reviewed by LLM.")
 
             self._load_ideas(select_idea_id=idea_id)
         except Exception as e:
-            self.app.call_from_thread(self.notify, _llm_error_message(e), severity="error")
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
 
     @work(thread=True)
     def _run_llm_caption(self, idea_id: int) -> None:
-        import json
-
         from anne.db.connection import get_connection
-        from anne.services.ideas import get_idea, caption_idea
-        from anne.services.llm import caption_ideas_with_llm
+        from anne.services.pipeline import caption_single_idea, format_llm_error
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -505,39 +477,19 @@ class BookWorkspaceScreen(Screen):
 
         try:
             with get_connection(settings.db_path) as conn:
-                idea = get_idea(conn, idea_id)
-                if not idea or idea.status != IdeaStatus.reviewed:
-                    self.app.call_from_thread(
-                        self.notify, f"Idea {idea_id} is no longer in reviewed status.", severity="error",
-                    )
-                    return
-
-                results = caption_ideas_with_llm(
+                caption_single_idea(
+                    conn,
                     api_key=api_key,
                     book_title=self._book.title,
                     book_author=self._book.author,
-                    ideas=[idea],
+                    idea_id=idea_id,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    llm_call_interval=settings.llm_call_interval,
                     content_language=settings.content_language,
                     cta_link=settings.cta_link,
-                    max_input_tokens=settings.max_llm_input_tokens,
-                    min_interval=settings.llm_call_interval,
                 )
-                for r in results:
-                    caption_idea(conn, r.idea_id, r.presentation_text, json.dumps(r.tags, ensure_ascii=False))
-                    self.app.call_from_thread(self.notify, f"Idea {r.idea_id} captioned by LLM.")
-                conn.commit()
+                self.app.call_from_thread(self.notify, f"Idea {idea_id} captioned by LLM.")
 
             self._load_ideas(select_idea_id=idea_id)
         except Exception as e:
-            self.app.call_from_thread(self.notify, _llm_error_message(e), severity="error")
-
-
-def _llm_error_message(e: Exception) -> str:
-    from anne.services.llm import ContentTooLargeError, RateLimitError
-    if isinstance(e, RateLimitError):
-        return "Rate limited by Gemini API. Wait and retry."
-    elif isinstance(e, ContentTooLargeError):
-        return str(e)
-    elif isinstance(e, ValueError):
-        return str(e)
-    return f"Error: {e}"
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")

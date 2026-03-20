@@ -213,8 +213,12 @@ class _ContentExtractor(HTMLParser):
 LLM_TYPES = {SourceType.essay_md, SourceType.essay_txt, SourceType.essay_html, SourceType.manual_notes}
 
 
-def parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:
-    """Parse a source file into ideas, dispatching by source type."""
+def parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea] | None:
+    """Parse a source file into ideas, dispatching by source type.
+
+    Returns None for unknown/unsupported source types, or a (possibly empty)
+    list for known types.
+    """
     from anne.services.llm import parse_essay_with_llm
 
     source_type = SourceType(source.type)
@@ -227,7 +231,7 @@ def parse_source(source: Source, content: str, api_key: str | None, max_input_to
             content = extract_html_content(content)
         return parse_essay_with_llm(api_key, content, max_input_tokens=max_input_tokens)
     else:
-        return []
+        return None
 
 
 def extract_html_content(content: str) -> str:

@@ -230,8 +230,9 @@ def edit(
 
 def _parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:
     ideas = parse_source(source, content, api_key, max_input_tokens)
-    if not ideas and SourceType(source.type) not in LLM_TYPES and SourceType(source.type) != SourceType.kindle_export_html:
+    if ideas is None:
         rprint(f"  [yellow]Warning:[/yellow] unknown source type '{source.type}', skipping")
+        return []
     return ideas
 
 

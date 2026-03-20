@@ -1,5 +1,3 @@
-import json
-
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -126,6 +124,7 @@ class DashboardScreen(Screen):
         from anne.services.books import list_books
         from anne.services.ideas import get_unparsed_sources, insert_ideas
         from anne.services.parsers import LLM_TYPES, parse_source
+        from anne.services.pipeline import format_llm_error
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -157,20 +156,21 @@ class DashboardScreen(Screen):
                         ideas = parse_source(source, content, api_key, settings.max_llm_input_tokens)
                         if ideas:
                             insert_ideas(conn, book.id, source.id, ideas)
+                            conn.commit()
                             total += len(ideas)
 
             label = "idea" if total == 1 else "ideas"
             self.app.call_from_thread(self.notify, f"Parsed {total} {label}.")
             self._load_data()
         except Exception as e:
-            self.app.call_from_thread(self.notify, self._error_message(e), severity="error")
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
 
     @work(thread=True)
     def _run_triage(self) -> None:
         from anne.db.connection import get_connection
         from anne.services.books import list_books
-        from anne.services.ideas import get_ideas_by_status, triage_approve_idea, reject_idea
-        from anne.services.llm import triage_ideas_with_llm
+        from anne.services.ideas import get_ideas_by_status
+        from anne.services.pipeline import format_llm_error, triage_book_ideas
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -188,40 +188,29 @@ class DashboardScreen(Screen):
                     parsed_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.parsed)
                     if not parsed_ideas:
                         continue
-                    chunks = [
-                        parsed_ideas[i : i + settings.triage_chunk_size]
-                        for i in range(0, len(parsed_ideas), settings.triage_chunk_size)
-                    ]
-                    for chunk in chunks:
-                        decisions = triage_ideas_with_llm(
-                            api_key=api_key,
-                            book_title=book.title,
-                            book_author=book.author,
-                            ideas=chunk,
-                            total_ideas=len(parsed_ideas),
-                            max_input_tokens=settings.max_llm_input_tokens,
-                            min_interval=settings.llm_call_interval,
-                        )
-                        for d in decisions:
-                            if d.decision == "triage":
-                                triage_approve_idea(conn, d.idea_id)
-                            elif d.decision == "reject":
-                                reject_idea(conn, d.idea_id, d.rejection_reason)
-                            total += 1
-                        conn.commit()
+                    total += triage_book_ideas(
+                        conn,
+                        api_key=api_key,
+                        book_title=book.title,
+                        book_author=book.author,
+                        ideas=parsed_ideas,
+                        chunk_size=settings.triage_chunk_size,
+                        max_input_tokens=settings.max_llm_input_tokens,
+                        llm_call_interval=settings.llm_call_interval,
+                    )
 
             label = "idea" if total == 1 else "ideas"
             self.app.call_from_thread(self.notify, f"Triaged {total} {label}.")
             self._load_data()
         except Exception as e:
-            self.app.call_from_thread(self.notify, self._error_message(e), severity="error")
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
 
     @work(thread=True)
     def _run_review(self) -> None:
         from anne.db.connection import get_connection
         from anne.services.books import list_books
-        from anne.services.ideas import get_ideas_by_status, review_idea
-        from anne.services.llm import review_ideas_with_llm
+        from anne.services.ideas import get_ideas_by_status
+        from anne.services.pipeline import format_llm_error, review_book_ideas
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -239,38 +228,31 @@ class DashboardScreen(Screen):
                     triaged_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.triaged)
                     if not triaged_ideas:
                         continue
-                    chunks = [
-                        triaged_ideas[i : i + settings.review_chunk_size]
-                        for i in range(0, len(triaged_ideas), settings.review_chunk_size)
-                    ]
-                    for chunk in chunks:
-                        results = review_ideas_with_llm(
-                            api_key=api_key,
-                            book_title=book.title,
-                            book_author=book.author,
-                            ideas=chunk,
-                            content_language=settings.content_language,
-                            quote_target_length=settings.review_quote_target_length,
-                            max_input_tokens=settings.max_llm_input_tokens,
-                            min_interval=settings.llm_call_interval,
-                        )
-                        for r in results:
-                            review_idea(conn, r.idea_id, r.reviewed_quote, r.reviewed_quote_emphasis, r.reviewed_comment)
-                            total += 1
-                        conn.commit()
+                    total += review_book_ideas(
+                        conn,
+                        api_key=api_key,
+                        book_title=book.title,
+                        book_author=book.author,
+                        ideas=triaged_ideas,
+                        chunk_size=settings.review_chunk_size,
+                        max_input_tokens=settings.max_llm_input_tokens,
+                        llm_call_interval=settings.llm_call_interval,
+                        content_language=settings.content_language,
+                        quote_target_length=settings.review_quote_target_length,
+                    )
 
             label = "idea" if total == 1 else "ideas"
             self.app.call_from_thread(self.notify, f"Reviewed {total} {label}.")
             self._load_data()
         except Exception as e:
-            self.app.call_from_thread(self.notify, self._error_message(e), severity="error")
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
 
     @work(thread=True)
     def _run_caption(self) -> None:
         from anne.db.connection import get_connection
         from anne.services.books import list_books
-        from anne.services.ideas import get_ideas_by_status, caption_idea
-        from anne.services.llm import caption_ideas_with_llm
+        from anne.services.ideas import get_ideas_by_status
+        from anne.services.pipeline import caption_book_ideas, format_llm_error
 
         settings = self.app.settings
         api_key = settings.gemini_api_key
@@ -288,39 +270,21 @@ class DashboardScreen(Screen):
                     reviewed_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.reviewed)
                     if not reviewed_ideas:
                         continue
-                    chunks = [
-                        reviewed_ideas[i : i + settings.caption_chunk_size]
-                        for i in range(0, len(reviewed_ideas), settings.caption_chunk_size)
-                    ]
-                    for chunk in chunks:
-                        results = caption_ideas_with_llm(
-                            api_key=api_key,
-                            book_title=book.title,
-                            book_author=book.author,
-                            ideas=chunk,
-                            content_language=settings.content_language,
-                            cta_link=settings.cta_link,
-                            max_input_tokens=settings.max_llm_input_tokens,
-                            min_interval=settings.llm_call_interval,
-                        )
-                        for r in results:
-                            caption_idea(conn, r.idea_id, r.presentation_text, json.dumps(r.tags, ensure_ascii=False))
-                            total += 1
-                        conn.commit()
+                    total += caption_book_ideas(
+                        conn,
+                        api_key=api_key,
+                        book_title=book.title,
+                        book_author=book.author,
+                        ideas=reviewed_ideas,
+                        chunk_size=settings.caption_chunk_size,
+                        max_input_tokens=settings.max_llm_input_tokens,
+                        llm_call_interval=settings.llm_call_interval,
+                        content_language=settings.content_language,
+                        cta_link=settings.cta_link,
+                    )
 
             label = "idea" if total == 1 else "ideas"
             self.app.call_from_thread(self.notify, f"Captioned {total} {label}.")
             self._load_data()
         except Exception as e:
-            self.app.call_from_thread(self.notify, self._error_message(e), severity="error")
-
-    @staticmethod
-    def _error_message(e: Exception) -> str:
-        from anne.services.llm import ContentTooLargeError, RateLimitError
-        if isinstance(e, RateLimitError):
-            return "Rate limited by Gemini API. Wait and retry."
-        elif isinstance(e, ContentTooLargeError):
-            return str(e)
-        elif isinstance(e, ValueError):
-            return str(e)
-        return f"Error: {e}"
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
