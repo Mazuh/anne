@@ -28,6 +28,7 @@ class IdeaList(DataTable):
         self._per_page = 25
         self._total = 0
         self._status_filter: IdeaStatus | None = None
+        self._tag_filter: str | None = None
         self._search_query: str = ""
 
     @property
@@ -67,6 +68,15 @@ class IdeaList(DataTable):
     @status_filter.setter
     def status_filter(self, value: IdeaStatus | None) -> None:
         self._status_filter = value
+        self._page = 1  # Reset to first page when filter changes
+
+    @property
+    def tag_filter(self) -> str | None:
+        return self._tag_filter
+
+    @tag_filter.setter
+    def tag_filter(self, value: str | None) -> None:
+        self._tag_filter = value
         self._page = 1  # Reset to first page when filter changes
 
     @property

@@ -12,6 +12,7 @@ _COMMON_KEYS = """
 
 [bold]Filter & Search[/bold]
   f    filter status
+  T    filter tag
   /    search
 """
 

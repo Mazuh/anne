@@ -1,3 +1,5 @@
+import json
+
 from rich.markup import escape
 
 from textual.app import ComposeResult
@@ -17,6 +19,7 @@ def _render_idea(idea: Idea, book_title: str, source_path: str) -> str:
         lines.append(f"  Ref:     {_escape(idea.raw_ref)}")
     lines.append(f"  Created: {idea.created_at}")
     lines.append(f"  Updated: {idea.updated_at}")
+    lines.append(f"  Tags:    {_format_tags(idea.tags)}")
 
     if idea.raw_quote or idea.raw_note:
         lines.append("")
@@ -41,13 +44,10 @@ def _render_idea(idea: Idea, book_title: str, source_path: str) -> str:
         if idea.reviewed_comment:
             lines.append(f"  Comment:  {_escape(idea.reviewed_comment)}")
 
-    if idea.presentation_text or (idea.tags and idea.tags != "[]"):
+    if idea.presentation_text:
         lines.append("")
         lines.append("[bold]Caption[/bold]")
-        if idea.presentation_text:
-            lines.append(f"  Text: {_escape(idea.presentation_text)}")
-        if idea.tags and idea.tags != "[]":
-            lines.append(f"  Tags: {idea.tags}")
+        lines.append(f"  Text: {_escape(idea.presentation_text)}")
 
     return "\n".join(lines)
 
@@ -61,6 +61,18 @@ def _status_color(status: str) -> str:
         "rejected": "red",
     }
     return colors.get(status, "white")
+
+
+def _format_tags(tags: str) -> str:
+    if not tags or tags == "[]":
+        return "\u2014"
+    try:
+        tag_list = json.loads(tags)
+        if tag_list:
+            return ", ".join(str(t) for t in tag_list)
+    except (json.JSONDecodeError, TypeError):
+        return _escape(tags)
+    return "\u2014"
 
 
 def _escape(text: str) -> str:

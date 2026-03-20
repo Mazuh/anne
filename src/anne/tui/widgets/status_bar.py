@@ -21,6 +21,7 @@ class StatusBar(Static):
         self._total_pages = 1
         self._total_ideas = 0
         self._search_query = ""
+        self._tag_filter: str | None = None
 
     def refresh_bar(
         self,
@@ -30,12 +31,14 @@ class StatusBar(Static):
         total_pages: int = 1,
         total_ideas: int = 0,
         search_query: str = "",
+        tag_filter: str | None = None,
     ) -> None:
         self._status_filter = status_filter
         self._page = page
         self._total_pages = total_pages
         self._total_ideas = total_ideas
         self._search_query = search_query
+        self._tag_filter = tag_filter
         self._update_display()
 
     def _update_display(self) -> None:
@@ -45,6 +48,9 @@ class StatusBar(Static):
             parts.append(f"\\[{self._status_filter.value}]")
         else:
             parts.append("\\[all]")
+
+        if self._tag_filter:
+            parts.append(f"tag:{self._tag_filter}")
 
         parts.append(f"Page {self._page}/{self._total_pages} ({self._total_ideas} ideas)")
 

@@ -30,6 +30,7 @@ class BookWorkspaceScreen(Screen):
         Binding("t", "edit_tags", "Tags", show=False),
         Binding("E", "open_editor", "Editor", show=False),
         Binding("f", "filter_status", "Filter"),
+        Binding("T", "filter_tag", "Tag filter"),
         Binding("slash", "search", "Search"),
         Binding("q", "go_back", "Back"),
     ]
@@ -70,10 +71,12 @@ class BookWorkspaceScreen(Screen):
                 self._source_paths = {s.id: s.path for s in sources}
 
             status_filter = idea_list.status_filter
+            tag_filter = idea_list.tag_filter
             search = idea_list.search_query or None
 
             total = count_ideas(
                 conn, book_id=self._book.id, status=status_filter, search=search,
+                tag=tag_filter,
             )
             ideas = list_ideas_paginated(
                 conn,
@@ -82,6 +85,7 @@ class BookWorkspaceScreen(Screen):
                 page=idea_list.page,
                 per_page=idea_list.per_page,
                 search=search,
+                tag=tag_filter,
             )
 
         self.app.call_from_thread(self._populate, ideas, total, select_idea_id)
@@ -97,6 +101,7 @@ class BookWorkspaceScreen(Screen):
             total_pages=idea_list.total_pages,
             total_ideas=total,
             search_query=idea_list.search_query,
+            tag_filter=idea_list.tag_filter,
         )
 
         if select_idea_id is not None:
@@ -238,6 +243,33 @@ class BookWorkspaceScreen(Screen):
     def _on_filter_selected(self, status: IdeaStatus | None) -> None:
         idea_list = self.query_one("#idea-list", IdeaList)
         idea_list.status_filter = status
+        self._load_ideas()
+
+    def action_filter_tag(self) -> None:
+        self._fetch_tags_for_filter()
+
+    @work(thread=True)
+    def _fetch_tags_for_filter(self) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_distinct_tags
+
+        with get_connection(self.app.settings.db_path) as conn:
+            tags = get_distinct_tags(conn, self._book.id)
+
+        idea_list = self.query_one("#idea-list", IdeaList)
+        current_tag = idea_list.tag_filter
+        self.app.call_from_thread(self._open_tag_filter_modal, current_tag, tags)
+
+    def _open_tag_filter_modal(self, current_tag: str | None, tags: list[str]) -> None:
+        from anne.tui.modals.tag_filter import TagFilterModal
+        self.app.push_screen(
+            TagFilterModal(current_tag, tags),
+            callback=self._on_tag_filter_selected,
+        )
+
+    def _on_tag_filter_selected(self, tag: str | None) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.tag_filter = tag
         self._load_ideas()
 
     def action_search(self) -> None:

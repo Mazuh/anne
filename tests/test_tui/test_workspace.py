@@ -8,7 +8,13 @@ from anne.config.settings import Settings
 from anne.db.connection import get_connection
 from anne.models import Book, IdeaStatus
 from anne.services.books import get_book
-from anne.services.ideas import get_idea, reject_idea
+from anne.services.ideas import (
+    caption_idea,
+    get_idea,
+    reject_idea,
+    review_idea,
+    triage_approve_idea,
+)
 from anne.tui.screens.workspace import BookWorkspaceScreen
 from anne.tui.widgets.idea_list import IdeaList
 from tests.test_tui.conftest import wait_for_workers
@@ -208,3 +214,80 @@ class TestWorkspaceEdit:
             with get_connection(workspace_app.settings.db_path) as conn:
                 updated = get_idea(conn, idea.id)
             assert updated.raw_quote == "Updated quote text"
+
+
+@pytest.fixture
+def tagged_workspace_app(tui_settings: Settings) -> WorkspaceTestApp:
+    """Workspace with ideas that have tags."""
+    from anne.db.migrate import apply_schema
+    from anne.models import SourceType
+    from anne.services.books import create_book
+    from anne.services.ideas import insert_ideas
+    from anne.services.parsers import ParsedIdea
+    from anne.services.sources import import_source
+
+    apply_schema(tui_settings.db_path)
+
+    with get_connection(tui_settings.db_path) as conn:
+        book = create_book(conn, "Tagged Book", "Author")
+        source = import_source(
+            conn, book.id, SourceType.kindle_export_html, "s/notes.html", "fp1",
+        )
+        # Create 3 ideas, advance 2 to ready with tags
+        for quote, tags in [("Q1", '["philosophy", "ethics"]'), ("Q2", '["philosophy", "power"]')]:
+            ideas = insert_ideas(conn, book.id, source.id, [ParsedIdea(raw_quote=quote)])
+            triage_approve_idea(conn, ideas[0].id)
+            review_idea(conn, ideas[0].id, quote, None, "ctx")
+            caption_idea(conn, ideas[0].id, "caption", tags)
+        # One parsed idea without tags
+        insert_ideas(conn, book.id, source.id, [ParsedIdea(raw_quote="Q3")])
+
+    with get_connection(tui_settings.db_path) as conn:
+        book_obj = get_book(conn, "tagged-book")
+    return WorkspaceTestApp(tui_settings, book_obj)
+
+
+class TestTagFilter:
+    async def test_tag_filter_modal_opens(self, tagged_workspace_app: WorkspaceTestApp) -> None:
+        async with tagged_workspace_app.run_test() as pilot:
+            await wait_for_workers(tagged_workspace_app)
+            await pilot.press("T")
+            await wait_for_workers(tagged_workspace_app)
+            await pilot.pause()
+            from anne.tui.modals.tag_filter import TagFilterModal
+            assert isinstance(tagged_workspace_app.screen, TagFilterModal)
+
+    async def test_tag_filter_filters_list(self, tagged_workspace_app: WorkspaceTestApp) -> None:
+        async with tagged_workspace_app.run_test() as pilot:
+            await wait_for_workers(tagged_workspace_app)
+            idea_list = tagged_workspace_app.screen.query_one("#idea-list", IdeaList)
+            assert len(idea_list.ideas) == 3  # all ideas
+
+            # Open tag filter modal
+            await pilot.press("T")
+            await wait_for_workers(tagged_workspace_app)
+            await pilot.pause()
+
+            from anne.tui.modals.tag_filter import TagFilterModal
+            assert isinstance(tagged_workspace_app.screen, TagFilterModal)
+
+            from textual.widgets import RadioButton
+            # Options: All, ethics, philosophy, power — click "ethics" (index 1)
+            buttons = tagged_workspace_app.screen.query(RadioButton)
+            await pilot.click(buttons[1])  # "ethics"
+            await pilot.pause()
+            apply_btn = tagged_workspace_app.screen.query_one("#apply-btn", Button)
+            await pilot.click(apply_btn)
+            await wait_for_workers(tagged_workspace_app)
+
+            idea_list = tagged_workspace_app.screen.query_one("#idea-list", IdeaList)
+            assert len(idea_list.ideas) == 1
+            assert idea_list.ideas[0].raw_quote == "Q1"
+
+    async def test_tags_visible_in_detail(self, tagged_workspace_app: WorkspaceTestApp) -> None:
+        async with tagged_workspace_app.run_test() as pilot:
+            await wait_for_workers(tagged_workspace_app)
+            content = tagged_workspace_app.screen.query_one("#idea-detail-content", Static)
+            text = str(content.content)
+            assert "Tags:" in text
+            assert "philosophy" in text

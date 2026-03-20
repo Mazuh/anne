@@ -6,11 +6,14 @@ from anne.services.books import create_book
 from anne.services.ideas import (
     triage_approve_idea,
     caption_idea,
+    count_ideas,
+    get_distinct_tags,
     get_ideas_by_status,
     get_unparsed_sources,
     insert_ideas,
     is_source_parsed,
     list_ideas,
+    list_ideas_paginated,
     reject_idea,
     review_idea,
 )
@@ -241,3 +244,71 @@ def test_caption_idea_tags_not_array(tmp_db: sqlite3.Connection):
     review_idea(tmp_db, ideas[0].id, "Q", None, "C")
     with pytest.raises(ValueError, match="tags must be a JSON array"):
         caption_idea(tmp_db, ideas[0].id, "caption", '{"not": "array"}')
+
+
+def _make_ready_idea(conn: sqlite3.Connection, book_id: int, source_id: int, quote: str, tags: str) -> None:
+    """Helper to create an idea and advance it to ready status with tags."""
+    ideas = insert_ideas(conn, book_id, source_id, [ParsedIdea(raw_quote=quote)])
+    triage_approve_idea(conn, ideas[0].id)
+    review_idea(conn, ideas[0].id, quote, None, "context")
+    caption_idea(conn, ideas[0].id, "caption", tags)
+
+
+def test_get_distinct_tags(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    _make_ready_idea(tmp_db, book.id, source.id, "Q1", '["philosophy", "ethics"]')
+    _make_ready_idea(tmp_db, book.id, source.id, "Q2", '["philosophy", "power"]')
+
+    tags = get_distinct_tags(tmp_db, book.id)
+    assert tags == ["ethics", "philosophy", "power"]
+
+
+def test_get_distinct_tags_empty(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    tags = get_distinct_tags(tmp_db, book.id)
+    assert tags == []
+
+
+def test_count_ideas_with_tag_filter(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    _make_ready_idea(tmp_db, book.id, source.id, "Q1", '["philosophy", "ethics"]')
+    _make_ready_idea(tmp_db, book.id, source.id, "Q2", '["philosophy", "power"]')
+    _make_ready_idea(tmp_db, book.id, source.id, "Q3", '["irony"]')
+
+    assert count_ideas(tmp_db, book_id=book.id, tag="philosophy") == 2
+    assert count_ideas(tmp_db, book_id=book.id, tag="ethics") == 1
+    assert count_ideas(tmp_db, book_id=book.id, tag="irony") == 1
+    assert count_ideas(tmp_db, book_id=book.id, tag="nonexistent") == 0
+    assert count_ideas(tmp_db, book_id=book.id) == 3
+
+
+def test_list_ideas_paginated_with_tag_filter(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    _make_ready_idea(tmp_db, book.id, source.id, "Q1", '["philosophy", "ethics"]')
+    _make_ready_idea(tmp_db, book.id, source.id, "Q2", '["philosophy", "power"]')
+    _make_ready_idea(tmp_db, book.id, source.id, "Q3", '["irony"]')
+
+    results = list_ideas_paginated(tmp_db, book_id=book.id, tag="philosophy")
+    assert len(results) == 2
+    quotes = {r.raw_quote for r in results}
+    assert quotes == {"Q1", "Q2"}
+
+    results = list_ideas_paginated(tmp_db, book_id=book.id, tag="irony")
+    assert len(results) == 1
+    assert results[0].raw_quote == "Q3"
+
+
+def test_tag_filter_combined_with_status(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    # One ready idea with "philosophy" tag
+    _make_ready_idea(tmp_db, book.id, source.id, "Q1", '["philosophy"]')
+    # One parsed idea (no tags)
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q2")])
+
+    # Filter by tag only — should find the ready one
+    assert count_ideas(tmp_db, book_id=book.id, tag="philosophy") == 1
+    # Filter by tag + status=ready — should still find it
+    assert count_ideas(tmp_db, book_id=book.id, status=IdeaStatus.ready, tag="philosophy") == 1
+    # Filter by tag + status=parsed — should find nothing
+    assert count_ideas(tmp_db, book_id=book.id, status=IdeaStatus.parsed, tag="philosophy") == 0

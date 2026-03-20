@@ -147,6 +147,16 @@ def get_idea(conn: sqlite3.Connection, idea_id: int) -> Idea | None:
     return Idea(**dict(row))
 
 
+def _apply_tag_condition(
+    conditions: list[str], params: list[object], tag: str | None
+) -> None:
+    if tag is not None:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM json_each(ideas.tags) AS j WHERE j.value = ?)"
+        )
+        params.append(tag)
+
+
 def _apply_search_conditions(
     conditions: list[str], params: list[object], search: str | None
 ) -> None:
@@ -162,11 +172,22 @@ def _apply_search_conditions(
         params.extend([search_pattern] * 5)
 
 
+def get_distinct_tags(conn: sqlite3.Connection, book_id: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT DISTINCT j.value FROM ideas, json_each(ideas.tags) AS j "
+        "WHERE ideas.book_id = ? AND ideas.tags IS NOT NULL AND ideas.tags != '' "
+        "ORDER BY j.value",
+        (book_id,),
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
 def count_ideas(
     conn: sqlite3.Connection,
     book_id: int | None = None,
     status: IdeaStatus | None = None,
     search: str | None = None,
+    tag: str | None = None,
 ) -> int:
     query = "SELECT COUNT(*) FROM ideas"
     conditions: list[str] = []
@@ -177,6 +198,7 @@ def count_ideas(
     if status is not None:
         conditions.append("status = ?")
         params.append(status.value)
+    _apply_tag_condition(conditions, params, tag)
     _apply_search_conditions(conditions, params, search)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -191,6 +213,7 @@ def list_ideas_paginated(
     page: int = 1,
     per_page: int = 25,
     search: str | None = None,
+    tag: str | None = None,
 ) -> list[Idea]:
     query = "SELECT * FROM ideas"
     conditions: list[str] = []
@@ -201,6 +224,7 @@ def list_ideas_paginated(
     if status is not None:
         conditions.append("status = ?")
         params.append(status.value)
+    _apply_tag_condition(conditions, params, tag)
     _apply_search_conditions(conditions, params, search)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
