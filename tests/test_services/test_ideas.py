@@ -174,12 +174,12 @@ def test_review_idea_not_approved(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     # Still in 'parsed' status
-    with pytest.raises(ValueError, match="not in triaged status"):
+    with pytest.raises(ValueError, match="not in expected status"):
         review_idea(tmp_db, ideas[0].id, "q", "c")
 
 
 def test_review_idea_not_found(tmp_db: sqlite3.Connection):
-    with pytest.raises(ValueError, match="not in triaged status"):
+    with pytest.raises(ValueError, match="not in expected status"):
         review_idea(tmp_db, 9999, "q", "c")
 
 
@@ -191,6 +191,26 @@ def test_review_idea_without_emphasis(tmp_db: sqlite3.Connection):
     reviewed = review_idea(tmp_db, ideas[0].id, "Plain quote shortened", "Context.")
     assert reviewed.reviewed_quote == "Plain quote shortened"
     assert "**" not in reviewed.reviewed_quote
+
+
+def test_review_idea_redo(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Original quote")])
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "First review", "First context.")
+    assert ideas[0].id is not None
+
+    # Without allow_reviewed, re-review should fail
+    with pytest.raises(ValueError, match="not in expected status"):
+        review_idea(tmp_db, ideas[0].id, "Second review", "Second context.")
+
+    # With allow_reviewed, re-review should succeed
+    re_reviewed = review_idea(
+        tmp_db, ideas[0].id, "Second review", "Second context.", allow_reviewed=True,
+    )
+    assert re_reviewed.status == IdeaStatus.reviewed
+    assert re_reviewed.reviewed_quote == "Second review"
+    assert re_reviewed.reviewed_comment == "Second context."
 
 
 def test_caption_idea(tmp_db: sqlite3.Connection):

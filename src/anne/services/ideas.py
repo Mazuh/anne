@@ -76,21 +76,37 @@ def review_idea(
     idea_id: int,
     reviewed_quote: str,
     reviewed_comment: str,
+    allow_reviewed: bool = False,
 ) -> Idea:
-    cursor = conn.execute(
-        """UPDATE ideas SET status = ?, reviewed_quote = ?,
-           reviewed_comment = ?, updated_at = datetime('now')
-           WHERE id = ? AND status = ?""",
-        (
-            IdeaStatus.reviewed,
-            reviewed_quote,
-            reviewed_comment,
-            idea_id,
-            IdeaStatus.triaged,
-        ),
-    )
+    if allow_reviewed:
+        cursor = conn.execute(
+            """UPDATE ideas SET status = ?, reviewed_quote = ?,
+               reviewed_comment = ?, updated_at = datetime('now')
+               WHERE id = ? AND status IN (?, ?)""",
+            (
+                IdeaStatus.reviewed,
+                reviewed_quote,
+                reviewed_comment,
+                idea_id,
+                IdeaStatus.triaged,
+                IdeaStatus.reviewed,
+            ),
+        )
+    else:
+        cursor = conn.execute(
+            """UPDATE ideas SET status = ?, reviewed_quote = ?,
+               reviewed_comment = ?, updated_at = datetime('now')
+               WHERE id = ? AND status = ?""",
+            (
+                IdeaStatus.reviewed,
+                reviewed_quote,
+                reviewed_comment,
+                idea_id,
+                IdeaStatus.triaged,
+            ),
+        )
     if cursor.rowcount == 0:
-        raise ValueError(f"Idea not found or not in triaged status: {idea_id}")
+        raise ValueError(f"Idea not found or not in expected status: {idea_id}")
     row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
     return Idea(**dict(row))
 

@@ -379,6 +379,7 @@ def idea_triage(
 @ideas_app.command("review")
 def idea_review(
     book_slug: str | None = typer.Argument(None, help="Book slug (omit to review all books)"),
+    redo: bool = typer.Option(False, "--redo", help="Re-review ideas already in reviewed status"),
 ) -> None:
     """Review triaged ideas: refine quotes and add factual context using LLM."""
     settings = load_settings()
@@ -402,14 +403,16 @@ def idea_review(
         rprint(f"[bold]{book.title}[/bold]")
         try:
             with get_connection(settings.db_path) as conn:
-                triaged_ideas = get_ideas_by_status(conn, book.id, IdeaStatus.triaged)
-                if not triaged_ideas:
-                    rprint(f"  [dim]{book.title}: no triaged ideas to review[/dim]")
+                ideas_to_review = get_ideas_by_status(conn, book.id, IdeaStatus.triaged)
+                if redo:
+                    ideas_to_review += get_ideas_by_status(conn, book.id, IdeaStatus.reviewed)
+                if not ideas_to_review:
+                    rprint(f"  [dim]{book.title}: no ideas to review[/dim]")
                     continue
 
                 chunks = [
-                    triaged_ideas[i : i + settings.review_chunk_size]
-                    for i in range(0, len(triaged_ideas), settings.review_chunk_size)
+                    ideas_to_review[i : i + settings.review_chunk_size]
+                    for i in range(0, len(ideas_to_review), settings.review_chunk_size)
                 ]
                 for chunk in chunks:
                     results = review_ideas_with_llm(
@@ -428,6 +431,7 @@ def idea_review(
                             r.idea_id,
                             r.reviewed_quote,
                             r.reviewed_comment,
+                            allow_reviewed=redo,
                         )
                         total_reviewed += 1
                         preview = r.reviewed_quote[:_MAX_PREVIEW_LEN]

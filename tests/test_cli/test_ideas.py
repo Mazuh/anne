@@ -348,7 +348,56 @@ def test_idea_review_no_triaged_ideas(tmp_settings: Settings):
     with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
         result = runner.invoke(app, ["ideas", "review", "empty-book"])
     assert result.exit_code == 0
-    assert "no triaged ideas" in result.output
+    assert "no ideas to review" in result.output
+
+
+def test_idea_review_redo(tmp_settings: Settings):
+    _setup_book_with_triaged_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    # First, review all triaged ideas
+    with get_connection(tmp_settings.db_path) as conn:
+        rows = conn.execute("SELECT id FROM ideas WHERE status = 'triaged' ORDER BY id").fetchall()
+    idea_ids = [r["id"] for r in rows]
+
+    mock_resp_1 = _mock_review_response([
+        {"id": idea_ids[0], "reviewed_quote": "First pass Q1", "reviewed_comment": "C1"},
+        {"id": idea_ids[1], "reviewed_quote": "First pass Q2", "reviewed_comment": "C2"},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp_1),
+    ):
+        result = runner.invoke(app, ["ideas", "review", "test-book"])
+    assert result.exit_code == 0
+    assert "2 ideas reviewed" in result.output
+
+    # Without --redo, nothing to review
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["ideas", "review", "test-book"])
+    assert result.exit_code == 0
+    assert "no ideas to review" in result.output
+
+    # With --redo, reviewed ideas are picked up again
+    mock_resp_2 = _mock_review_response([
+        {"id": idea_ids[0], "reviewed_quote": "Second pass Q1", "reviewed_comment": "C1 v2"},
+        {"id": idea_ids[1], "reviewed_quote": "Second pass Q2", "reviewed_comment": "C2 v2"},
+    ])
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp_2),
+    ):
+        result = runner.invoke(app, ["ideas", "review", "test-book", "--redo"])
+    assert result.exit_code == 0
+    assert "2 ideas reviewed" in result.output
+
+    with get_connection(tmp_settings.db_path) as conn:
+        row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
+        assert row["status"] == "reviewed"
+        assert row["reviewed_quote"] == "Second pass Q1"
+        assert row["reviewed_comment"] == "C1 v2"
 
 
 def test_idea_review_book_not_found(tmp_settings: Settings):
