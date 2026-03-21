@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from anne.models import Source, SourceType
+from anne.utils.icloud import ensure_available
 
 
 EXTENSION_TYPE_MAP: dict[str, SourceType] = {
@@ -15,6 +16,7 @@ EXTENSION_TYPE_MAP: dict[str, SourceType] = {
 
 
 def compute_fingerprint(file_path: Path) -> str:
+    ensure_available(file_path)
     sha256 = hashlib.sha256()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):

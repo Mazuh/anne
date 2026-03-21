@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -9,6 +10,7 @@ from rich import print as rprint
 from anne.config.settings import load_settings
 from anne.db.connection import get_connection
 from anne.db.migrate import CURRENT_VERSION, get_schema_version
+from anne.utils.icloud import find_evicted_files
 
 
 def doctor() -> None:
@@ -62,6 +64,39 @@ def doctor() -> None:
     else:
         rprint(f"[red]\u2717[/red] Books directory missing: {settings.books_dir}")
         ok = False
+
+    # Cloud storage detection
+    root_str = str(settings.root_dir)
+    home = str(Path.home())
+    is_cloud = root_str.startswith(os.path.join(home, "Library/Mobile Documents"))
+    if is_cloud:
+        rprint("[cyan]ℹ[/cyan] Workspace appears to be on a cloud-synced folder (iCloud)")
+    elif root_str.startswith(os.path.join(home, "Documents")):
+        rprint("[cyan]ℹ[/cyan] Workspace is in ~/Documents — if this folder is cloud-synced,"
+               " consider running [bold]anne db backup[/bold] regularly")
+
+    # Evicted source files
+    if settings.books_dir.exists():
+        evicted = find_evicted_files(settings.books_dir)
+        if evicted:
+            rprint(f"[yellow]![/yellow] {len(evicted)} source file(s) evicted by cloud storage")
+        else:
+            rprint("[green]✓[/green] No evicted source files")
+
+    # Backup freshness
+    if settings.db_backup_dir is not None:
+        from anne.cli.db_cmd import _list_backups
+        backups = _list_backups(settings.db_backup_dir)
+        if not backups:
+            rprint("[yellow]![/yellow] No database backups found — run [bold]anne db backup[/bold]")
+        else:
+            latest = backups[0]
+            mtime = datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc)
+            age_days = (datetime.now(timezone.utc) - mtime).days
+            if age_days > 7:
+                rprint(f"[yellow]![/yellow] Latest backup is {age_days} days old: {latest.name}")
+            else:
+                rprint(f"[green]✓[/green] Latest backup: {latest.name} ({age_days}d ago)")
 
     # Shell alias
     from anne.cli.bootstrap import PROJECT_DIR

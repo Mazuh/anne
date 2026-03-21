@@ -18,6 +18,7 @@ class Settings(BaseModel):
     review_quote_target_length: int = 80
     cta_link: str = ""
     caption_chunk_size: int = 1 # preferred 1 for llm focused quality context
+    db_backup_dir: Path | None = None
 
     @property
     def db_path(self) -> Path:
@@ -55,4 +56,6 @@ def save_settings(settings: Settings) -> None:
         value = getattr(settings, field_name)
         if value != getattr(defaults, field_name):
             data[field_name] = value
+    if settings.db_backup_dir is not None:
+        data["db_backup_dir"] = str(settings.db_backup_dir)
     CONFIG_PATH.write_text(yaml.dump(data, default_flow_style=False))

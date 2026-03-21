@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.console import Console
 
 from anne.config.settings import Settings, load_settings
+from anne.utils.icloud import ensure_available, is_icloud_evicted
 from anne.db.connection import get_connection
 from anne.models import Book, SourceType
 from anne.services.books import get_book
@@ -52,7 +53,11 @@ def import_cmd(
                 raise typer.Exit(code=1)
         else:
             file_path = Path(location).resolve()
-            if not file_path.exists():
+            try:
+                if is_icloud_evicted(file_path):
+                    rprint("Downloading from cloud storage...")
+                ensure_available(file_path)
+            except FileNotFoundError:
                 rprint(f"[red]Error:[/red] file not found: {location}")
                 raise typer.Exit(code=1)
             source_type = type if type is not None else detect_source_type(file_path)

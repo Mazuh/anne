@@ -45,13 +45,26 @@ def bootstrap() -> None:
         default=existing.cta_link or "",
     ).strip()
 
+    rprint("\n[dim]The database holds idea reviews, tags, and captions — data that[/dim]")
+    rprint("[dim]cannot be rebuilt from source files. If your workspace is on a[/dim]")
+    rprint("[dim]cloud-synced folder, regular backups are recommended.[/dim]")
+    backup_default = str(existing.db_backup_dir) if existing.db_backup_dir else ""
+    backup_str = typer.prompt(
+        "Database backup directory (leave blank to skip)",
+        default=backup_default,
+    ).strip()
+    db_backup_dir = Path(backup_str).expanduser().resolve() if backup_str else None
+
     (root_dir / "data").mkdir(parents=True, exist_ok=True)
     (root_dir / "books").mkdir(parents=True, exist_ok=True)
+    if db_backup_dir is not None:
+        db_backup_dir.mkdir(parents=True, exist_ok=True)
 
     settings = Settings(
         root_dir=root_dir,
         gemini_api_key=gemini_key or None,
         cta_link=cta_link,
+        db_backup_dir=db_backup_dir,
     )
     save_settings(settings)
 

@@ -5,6 +5,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header
 
 from anne.models import Book, IdeaStatus
+from anne.utils.icloud import ensure_available
 
 
 _DASHBOARD_ACTIONS = ["Parse Sources", "Triage with LLM", "Review with LLM", "Caption with LLM"]
@@ -150,7 +151,9 @@ class DashboardScreen(Screen):
 
                     for source in sources:
                         source_path = settings.books_dir / book.slug / source.path
-                        if not source_path.exists():
+                        try:
+                            ensure_available(source_path)
+                        except FileNotFoundError:
                             continue
                         content = source_path.read_text(encoding="utf-8")
                         ideas = parse_source(source, content, api_key, settings.max_llm_input_tokens)

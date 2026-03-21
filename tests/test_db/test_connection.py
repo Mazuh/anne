@@ -3,11 +3,18 @@ from pathlib import Path
 from anne.db.connection import get_connection
 
 
-def test_connection_wal_mode(tmp_path: Path):
+def test_connection_delete_journal_mode(tmp_path: Path):
     db_path = tmp_path / "test.db"
     with get_connection(db_path) as conn:
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-        assert mode == "wal"
+        assert mode == "delete"
+
+
+def test_connection_busy_timeout(tmp_path: Path):
+    db_path = tmp_path / "test.db"
+    with get_connection(db_path) as conn:
+        timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+        assert timeout == 5000
 
 
 def test_connection_foreign_keys(tmp_path: Path):

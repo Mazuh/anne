@@ -42,6 +42,9 @@ uv run anne ideas caption [slug]            # generate Instagram captions for re
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
 uv run anne ideas show <id>                 # show full idea details
 uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)
+uv run anne db info                        # show what's in DB vs filesystem
+uv run anne db backup                      # create timestamped DB backup
+uv run anne db backup-restore [path]       # restore DB from backup
 uv run anne start                          # open TUI dashboard
 uv run anne start <slug>                   # open TUI directly into book workspace
 ```
@@ -58,9 +61,10 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 ## Database
 
 - Schema: `src/anne/db/schema.sql`
-- WAL mode enabled, foreign keys enforced
+- DELETE journal mode (not WAL), foreign keys enforced
 - `schema_version` table tracks migrations
 - All tables: books, sources, ideas, assets, posts
+- The workspace directory may be stored on a cloud-synced folder (iCloud, Google Drive, OneDrive). Source files may not be immediately available (cloud eviction) and SQLite may face corruption risks. DELETE journal mode is used instead of WAL for this reason. See `src/anne/utils/icloud.py` for eviction handling and `anne db backup` for backup/restore support.
 
 ## Testing
 

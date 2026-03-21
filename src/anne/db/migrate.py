@@ -108,6 +108,7 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
 
 def apply_schema(db_path: Path) -> None:
     conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     try:
         version = get_schema_version(conn)

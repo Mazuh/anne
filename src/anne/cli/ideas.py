@@ -10,6 +10,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from anne.config.settings import load_settings
+from anne.utils.icloud import ensure_available, is_icloud_evicted
 from anne.db.connection import get_connection
 from anne.models import Book, Idea, IdeaStatus, Source, SourceType
 from anne.services.books import get_book, get_book_by_id, get_book_titles, list_books
@@ -251,7 +252,11 @@ def _parse_book(
     total = 0
     for source in sources:
         source_path = books_dir / book.slug / source.path
-        if not source_path.exists():
+        try:
+            if is_icloud_evicted(source_path):
+                rprint(f"  Downloading from cloud storage: [cyan]{source.path}[/cyan]...")
+            ensure_available(source_path)
+        except FileNotFoundError:
             rprint(f"  [red]Error:[/red] source file not found: {source_path}")
             continue
         rprint(f"  Parsing [cyan]{source.path}[/cyan]...")
