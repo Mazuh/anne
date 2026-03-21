@@ -307,14 +307,12 @@ def test_idea_review_happy_path(tmp_settings: Settings):
     mock_resp = _mock_review_response([
         {
             "id": idea_ids[0],
-            "reviewed_quote": "Great insight",
-            "reviewed_quote_emphasis": "**Great** insight",
+            "reviewed_quote": "**Great** insight",
             "reviewed_comment": "The author reflects on society.",
         },
         {
             "id": idea_ids[1],
             "reviewed_quote": "Good idea",
-            "reviewed_quote_emphasis": None,
             "reviewed_comment": "Historical context for this passage.",
         },
     ])
@@ -332,8 +330,7 @@ def test_idea_review_happy_path(tmp_settings: Settings):
     with get_connection(tmp_settings.db_path) as conn:
         row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[0],)).fetchone()
         assert row["status"] == "reviewed"
-        assert row["reviewed_quote"] == "Great insight"
-        assert row["reviewed_quote_emphasis"] == "**Great** insight"
+        assert row["reviewed_quote"] == "**Great** insight"
         assert row["reviewed_comment"] == "The author reflects on society."
         # Raw fields untouched
         assert row["raw_quote"] == "A great insight about the world"
@@ -341,7 +338,6 @@ def test_idea_review_happy_path(tmp_settings: Settings):
 
         row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_ids[1],)).fetchone()
         assert row["status"] == "reviewed"
-        assert row["reviewed_quote_emphasis"] is None
 
 
 def test_idea_review_no_triaged_ideas(tmp_settings: Settings):
@@ -382,8 +378,8 @@ def test_idea_review_all_books(tmp_settings: Settings):
     idea_ids = [r["id"] for r in rows]
 
     mock_resp = _mock_review_response([
-        {"id": idea_ids[0], "reviewed_quote": "Q1", "reviewed_quote_emphasis": None, "reviewed_comment": "C1"},
-        {"id": idea_ids[1], "reviewed_quote": "Q2", "reviewed_quote_emphasis": None, "reviewed_comment": "C2"},
+        {"id": idea_ids[0], "reviewed_quote": "Q1", "reviewed_comment": "C1"},
+        {"id": idea_ids[1], "reviewed_quote": "Q2", "reviewed_comment": "C2"},
     ])
 
     with (
@@ -419,7 +415,7 @@ def test_idea_review_partial_response(tmp_settings: Settings):
 
     # LLM only returns result for first idea, omits second
     mock_resp = _mock_review_response([
-        {"id": idea_ids[0], "reviewed_quote": "Q1", "reviewed_quote_emphasis": None, "reviewed_comment": "C1"},
+        {"id": idea_ids[0], "reviewed_quote": "Q1", "reviewed_comment": "C1"},
     ])
 
     with (
@@ -457,8 +453,7 @@ def _setup_book_with_reviewed_ideas(tmp_settings: Settings) -> None:
             triage_approve_idea(conn, idea.id)
             review_idea(
                 conn, idea.id,
-                reviewed_quote=f"Reviewed {idea.id}",
-                reviewed_quote_emphasis=f"**Reviewed** {idea.id}",
+                reviewed_quote=f"**Reviewed** {idea.id}",
                 reviewed_comment=f"Context for {idea.id}.",
             )
 

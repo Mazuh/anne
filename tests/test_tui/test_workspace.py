@@ -237,7 +237,7 @@ def tagged_workspace_app(tui_settings: Settings) -> WorkspaceTestApp:
         for quote, tags in [("Q1", '["philosophy", "ethics"]'), ("Q2", '["philosophy", "power"]')]:
             ideas = insert_ideas(conn, book.id, source.id, [ParsedIdea(raw_quote=quote)])
             triage_approve_idea(conn, ideas[0].id)
-            review_idea(conn, ideas[0].id, quote, None, "ctx")
+            review_idea(conn, ideas[0].id, quote, "ctx")
             caption_idea(conn, ideas[0].id, "caption", tags)
         # One parsed idea without tags
         insert_ideas(conn, book.id, source.id, [ParsedIdea(raw_quote="Q3")])
@@ -302,7 +302,7 @@ class TestWorkspaceActionMenu:
 
             with get_connection(workspace_app.settings.db_path) as conn:
                 triage_approve_idea(conn, idea.id)
-                review_idea(conn, idea.id, "Refined quote", None, "Context")
+                review_idea(conn, idea.id, "Refined quote", "Context")
 
             await pilot.press("r")
             await wait_for_workers(workspace_app)

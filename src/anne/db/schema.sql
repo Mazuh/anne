@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS ideas (
     raw_ref TEXT,
     rejection_reason TEXT,
     reviewed_quote TEXT,
-    reviewed_quote_emphasis TEXT,
     reviewed_comment TEXT,
     quick_context TEXT,
     presentation_text TEXT,

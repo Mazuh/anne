@@ -320,7 +320,6 @@ class CaptionResult:
 class ReviewResult:
     idea_id: int
     reviewed_quote: str
-    reviewed_quote_emphasis: str | None
     reviewed_comment: str
 
 
@@ -337,12 +336,10 @@ For each idea below, produce:
 (soft limit — use more if needed to preserve meaning). If the book's language differs from \
 {content_language}, translate the quote. Remove trailing commas, artifacts, or formatting noise. \
 NEVER rephrase for style — preserve the author's original meaning and voice faithfully. \
-If raw_quote is null, use raw_note as the basis instead.
+If raw_quote is null, use raw_note as the basis instead. \
+Add **bold** markers (using **asterisks**) on 1-2 key words for visual impact, if any word stands out.
 
-2. "reviewed_quote_emphasis": The exact same text as reviewed_quote, but with **bold** markers \
-(using **asterisks**) on 1-2 key words for visual impact. Set to null if no word stands out.
-
-3. "reviewed_comment": A single paragraph of factual context. Examples of good context: \
+2. "reviewed_comment": A single paragraph of factual context. Examples of good context: \
 the author's age or bias at time of writing, historical facts relevant to the passage, \
 definitions of terms as used in the book's context (e.g. "fortuna" in Machiavelli means luck, \
 not money). This is NOT creative commentary — it is factual grounding for later creative stages. \
@@ -359,7 +356,7 @@ Input ideas (JSON array):
 
 Return ONLY a JSON array (no markdown fences, no extra text). Example:
 [
-  {{"id": 1, "reviewed_quote": "shortened quote", "reviewed_quote_emphasis": "shortened **quote**", "reviewed_comment": "factual context paragraph"}}
+  {{"id": 1, "reviewed_quote": "shortened **quote**", "reviewed_comment": "factual context paragraph"}}
 ]
 """
 
@@ -436,7 +433,6 @@ def review_ideas_with_llm(
             ReviewResult(
                 idea_id=idea_id,
                 reviewed_quote=reviewed_quote,
-                reviewed_quote_emphasis=item.get("reviewed_quote_emphasis"),
                 reviewed_comment=reviewed_comment,
             )
         )
@@ -504,7 +500,6 @@ def caption_ideas_with_llm(
             {
                 "id": idea.id,
                 "reviewed_quote": idea.reviewed_quote,
-                "reviewed_quote_emphasis": idea.reviewed_quote_emphasis,
                 "reviewed_comment": idea.reviewed_comment,
                 "book_title": book_title,
                 "book_author": book_author,

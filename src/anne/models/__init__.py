@@ -58,7 +58,6 @@ class Idea(BaseModel):
     raw_ref: str | None = None
     rejection_reason: str | None = None
     reviewed_quote: str | None = None
-    reviewed_quote_emphasis: str | None = None
     reviewed_comment: str | None = None
     quick_context: str | None = None
     presentation_text: str | None = None

@@ -36,7 +36,7 @@ def _setup_ideas(tmp_settings: Settings, count: int = 5, status: str = "parsed")
                 triage_approve_idea(conn, idea.id)
         if status in ("reviewed", "ready"):
             for idea in ideas:
-                review_idea(conn, idea.id, f"Reviewed {idea.id}", None, f"Comment {idea.id}")
+                review_idea(conn, idea.id, f"Reviewed {idea.id}", f"Comment {idea.id}")
         if status == "ready":
             for idea in ideas:
                 caption_idea(conn, idea.id, f"Caption {idea.id}", '["tag"]')

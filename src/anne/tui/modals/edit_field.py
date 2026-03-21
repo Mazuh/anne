@@ -10,7 +10,6 @@ _EDITABLE_FIELDS = [
     "raw_quote",
     "raw_note",
     "reviewed_quote",
-    "reviewed_quote_emphasis",
     "reviewed_comment",
     "presentation_text",
     "rejection_reason",

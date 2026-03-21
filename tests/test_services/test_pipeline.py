@@ -104,7 +104,7 @@ class TestReviewBookIdeas:
         ideas = [get_idea(conn, i) for i in range(1, 4)]
 
         mock_results = [
-            ReviewResult(idea_id=i, reviewed_quote=f"Reviewed {i}", reviewed_quote_emphasis=None, reviewed_comment=f"Comment {i}")
+            ReviewResult(idea_id=i, reviewed_quote=f"Reviewed {i}", reviewed_comment=f"Comment {i}")
             for i in range(1, 4)
         ]
 
@@ -138,7 +138,7 @@ class TestCaptionBookIdeas:
             triage_approve_idea(conn, i)
         conn.commit()
         for i in range(1, 4):
-            review_idea(conn, i, f"Reviewed {i}", None, f"Comment {i}")
+            review_idea(conn, i, f"Reviewed {i}", f"Comment {i}")
         conn.commit()
 
         ideas = [get_idea(conn, i) for i in range(1, 4)]
@@ -245,7 +245,7 @@ class TestReviewSingleIdea:
         triage_approve_idea(conn, 1)
         conn.commit()
 
-        mock_results = [ReviewResult(idea_id=1, reviewed_quote="Better quote", reviewed_quote_emphasis=None, reviewed_comment="Context")]
+        mock_results = [ReviewResult(idea_id=1, reviewed_quote="Better quote", reviewed_comment="Context")]
         with patch("anne.services.pipeline.review_ideas_with_llm", return_value=mock_results):
             review_single_idea(
                 conn,
@@ -284,7 +284,7 @@ class TestCaptionSingleIdea:
         from anne.services.ideas import triage_approve_idea, review_idea
         triage_approve_idea(conn, 1)
         conn.commit()
-        review_idea(conn, 1, "Reviewed", None, "Comment")
+        review_idea(conn, 1, "Reviewed", "Comment")
         conn.commit()
 
         mock_results = [CaptionResult(idea_id=1, presentation_text="Caption text", tags=["a"])]

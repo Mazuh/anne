@@ -75,17 +75,15 @@ def review_idea(
     conn: sqlite3.Connection,
     idea_id: int,
     reviewed_quote: str,
-    reviewed_quote_emphasis: str | None,
     reviewed_comment: str,
 ) -> Idea:
     cursor = conn.execute(
-        """UPDATE ideas SET status = ?, reviewed_quote = ?, reviewed_quote_emphasis = ?,
+        """UPDATE ideas SET status = ?, reviewed_quote = ?,
            reviewed_comment = ?, updated_at = datetime('now')
            WHERE id = ? AND status = ?""",
         (
             IdeaStatus.reviewed,
             reviewed_quote,
-            reviewed_quote_emphasis,
             reviewed_comment,
             idea_id,
             IdeaStatus.triaged,
@@ -251,7 +249,6 @@ _UPDATABLE_FIELDS: set[str] = {
     "raw_quote",
     "raw_note",
     "reviewed_quote",
-    "reviewed_quote_emphasis",
     "reviewed_comment",
     "presentation_text",
     "rejection_reason",

@@ -38,9 +38,7 @@ def _render_idea(idea: Idea, book_title: str, source_path: str) -> str:
         lines.append("")
         lines.append("[bold]Review[/bold]")
         if idea.reviewed_quote:
-            lines.append(f'  Quote:    "{_escape(idea.reviewed_quote)}"')
-        if idea.reviewed_quote_emphasis:
-            lines.append(f"  Emphasis: {_escape(idea.reviewed_quote_emphasis)}")
+            lines.append(f'  Quote:   "{_escape(idea.reviewed_quote)}"')
         if idea.reviewed_comment:
             lines.append(f"  Comment:  {_escape(idea.reviewed_comment)}")
 

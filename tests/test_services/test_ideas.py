@@ -159,13 +159,11 @@ def test_review_idea(tmp_db: sqlite3.Connection):
 
     reviewed = review_idea(
         tmp_db, ideas[0].id,
-        reviewed_quote="Shortened quote",
-        reviewed_quote_emphasis="**Shortened** quote",
+        reviewed_quote="**Shortened** quote",
         reviewed_comment="Factual context about the author.",
     )
     assert reviewed.status == IdeaStatus.reviewed
-    assert reviewed.reviewed_quote == "Shortened quote"
-    assert reviewed.reviewed_quote_emphasis == "**Shortened** quote"
+    assert reviewed.reviewed_quote == "**Shortened** quote"
     assert reviewed.reviewed_comment == "Factual context about the author."
     # Raw fields must be untouched
     assert reviewed.raw_quote == "Original quote"
@@ -177,29 +175,29 @@ def test_review_idea_not_approved(tmp_db: sqlite3.Connection):
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     # Still in 'parsed' status
     with pytest.raises(ValueError, match="not in triaged status"):
-        review_idea(tmp_db, ideas[0].id, "q", None, "c")
+        review_idea(tmp_db, ideas[0].id, "q", "c")
 
 
 def test_review_idea_not_found(tmp_db: sqlite3.Connection):
     with pytest.raises(ValueError, match="not in triaged status"):
-        review_idea(tmp_db, 9999, "q", None, "c")
+        review_idea(tmp_db, 9999, "q", "c")
 
 
-def test_review_idea_emphasis_null(tmp_db: sqlite3.Connection):
+def test_review_idea_without_emphasis(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
-    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Plain quote")])
     triage_approve_idea(tmp_db, ideas[0].id)
 
-    reviewed = review_idea(tmp_db, ideas[0].id, "Short Q", None, "Context.")
-    assert reviewed.reviewed_quote_emphasis is None
-    assert reviewed.reviewed_quote == "Short Q"
+    reviewed = review_idea(tmp_db, ideas[0].id, "Plain quote shortened", "Context.")
+    assert reviewed.reviewed_quote == "Plain quote shortened"
+    assert "**" not in reviewed.reviewed_quote
 
 
 def test_caption_idea(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Original quote")])
     triage_approve_idea(tmp_db, ideas[0].id)
-    review_idea(tmp_db, ideas[0].id, "Short quote", "**Short** quote", "Context.")
+    review_idea(tmp_db, ideas[0].id, "**Short** quote", "Context.")
 
     captioned = caption_idea(
         tmp_db, ideas[0].id,
@@ -210,7 +208,7 @@ def test_caption_idea(tmp_db: sqlite3.Connection):
     assert captioned.presentation_text == "This is the Instagram caption."
     assert captioned.tags == '["poder", "ironia"]'
     # Previous fields untouched
-    assert captioned.reviewed_quote == "Short quote"
+    assert captioned.reviewed_quote == "**Short** quote"
     assert captioned.raw_quote == "Original quote"
 
 
@@ -232,7 +230,7 @@ def test_caption_idea_invalid_tags_json(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     triage_approve_idea(tmp_db, ideas[0].id)
-    review_idea(tmp_db, ideas[0].id, "Q", None, "C")
+    review_idea(tmp_db, ideas[0].id, "Q", "C")
     with pytest.raises(ValueError, match="tags must be valid JSON"):
         caption_idea(tmp_db, ideas[0].id, "caption", "not json")
 
@@ -241,7 +239,7 @@ def test_caption_idea_tags_not_array(tmp_db: sqlite3.Connection):
     book, source = _add_book_and_source(tmp_db)
     ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
     triage_approve_idea(tmp_db, ideas[0].id)
-    review_idea(tmp_db, ideas[0].id, "Q", None, "C")
+    review_idea(tmp_db, ideas[0].id, "Q", "C")
     with pytest.raises(ValueError, match="tags must be a JSON array"):
         caption_idea(tmp_db, ideas[0].id, "caption", '{"not": "array"}')
 
@@ -250,7 +248,7 @@ def _make_ready_idea(conn: sqlite3.Connection, book_id: int, source_id: int, quo
     """Helper to create an idea and advance it to ready status with tags."""
     ideas = insert_ideas(conn, book_id, source_id, [ParsedIdea(raw_quote=quote)])
     triage_approve_idea(conn, ideas[0].id)
-    review_idea(conn, ideas[0].id, quote, None, "context")
+    review_idea(conn, ideas[0].id, quote, "context")
     caption_idea(conn, ideas[0].id, "caption", tags)
 
 

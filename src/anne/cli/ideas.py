@@ -161,8 +161,6 @@ def show(
             rprint(f"\n[bold]Review[/bold]")
             if idea.reviewed_quote:
                 rprint(f'  Quote:    "{escape(idea.reviewed_quote)}"')
-            if idea.reviewed_quote_emphasis:
-                rprint(f"  Emphasis: {escape(idea.reviewed_quote_emphasis)}")
             if idea.reviewed_comment:
                 rprint(f"  Comment:  {escape(idea.reviewed_comment)}")
 
@@ -182,7 +180,6 @@ def edit(
     raw_quote: Optional[str] = typer.Option(None, help="Update raw_quote"),
     raw_note: Optional[str] = typer.Option(None, help="Update raw_note"),
     reviewed_quote: Optional[str] = typer.Option(None, help="Update reviewed_quote"),
-    reviewed_quote_emphasis: Optional[str] = typer.Option(None, help="Update reviewed_quote_emphasis"),
     reviewed_comment: Optional[str] = typer.Option(None, help="Update reviewed_comment"),
     presentation_text: Optional[str] = typer.Option(None, help="Update presentation_text"),
     rejection_reason: Optional[str] = typer.Option(None, help="Update rejection_reason"),
@@ -199,8 +196,6 @@ def edit(
         fields["raw_note"] = raw_note
     if reviewed_quote is not None:
         fields["reviewed_quote"] = reviewed_quote
-    if reviewed_quote_emphasis is not None:
-        fields["reviewed_quote_emphasis"] = reviewed_quote_emphasis
     if reviewed_comment is not None:
         fields["reviewed_comment"] = reviewed_comment
     if presentation_text is not None:
@@ -432,7 +427,6 @@ def idea_review(
                             conn,
                             r.idea_id,
                             r.reviewed_quote,
-                            r.reviewed_quote_emphasis,
                             r.reviewed_comment,
                         )
                         total_reviewed += 1

@@ -81,7 +81,7 @@ def review_book_ideas(
             min_interval=llm_call_interval,
         )
         for r in results:
-            review_idea(conn, r.idea_id, r.reviewed_quote, r.reviewed_quote_emphasis, r.reviewed_comment)
+            review_idea(conn, r.idea_id, r.reviewed_quote, r.reviewed_comment)
             total += 1
         conn.commit()
     return total
