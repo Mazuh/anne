@@ -260,3 +260,49 @@ def test_ideas_edit_multiple_fields(tmp_settings: Settings):
         row = conn.execute("SELECT raw_quote, raw_note FROM ideas WHERE id = ?", (ids[0],)).fetchone()
         assert row["raw_quote"] == "New Q"
         assert row["raw_note"] == "New N"
+
+
+# --- ideas tags ---
+
+
+def test_ideas_tags_all(tmp_settings: Settings):
+    ids = _setup_ideas(tmp_settings, 3, status="ready")
+    # Add varied tags to make counts interesting
+    with get_connection(tmp_settings.db_path) as conn:
+        conn.execute("UPDATE ideas SET tags = ? WHERE id = ?", ('["amor", "ironia"]', ids[0]))
+        conn.execute("UPDATE ideas SET tags = ? WHERE id = ?", ('["amor"]', ids[1]))
+        conn.commit()
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "tags"])
+    assert result.exit_code == 0
+    assert "amor" in result.output
+    assert "ironia" in result.output
+    assert "3 distinct tags" in result.output
+
+
+def test_ideas_tags_by_book(tmp_settings: Settings):
+    ids = _setup_ideas(tmp_settings, 2, status="ready")
+    with get_connection(tmp_settings.db_path) as conn:
+        conn.execute("UPDATE ideas SET tags = ? WHERE id = ?", ('["poder"]', ids[0]))
+        conn.commit()
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "tags", "test-book"])
+    assert result.exit_code == 0
+    assert "poder" in result.output
+    assert "Test" in result.output
+
+
+def test_ideas_tags_empty(tmp_settings: Settings):
+    _setup_ideas(tmp_settings, 2, status="parsed")
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "tags"])
+    assert result.exit_code == 0
+    assert "No tags found" in result.output
+
+
+def test_ideas_tags_book_not_found(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "tags", "no-such-book"])
+    assert result.exit_code == 1
+    assert "not found" in result.output

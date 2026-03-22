@@ -196,6 +196,23 @@ def get_distinct_tags(conn: sqlite3.Connection, book_id: int) -> list[str]:
     return [row[0] for row in rows]
 
 
+def get_tags_with_counts(
+    conn: sqlite3.Connection, book_id: int | None = None
+) -> list[tuple[str, int]]:
+    query = (
+        "SELECT j.value, COUNT(*) AS cnt "
+        "FROM ideas, json_each(ideas.tags) AS j "
+        "WHERE ideas.tags IS NOT NULL AND ideas.tags != ''"
+    )
+    params: list[object] = []
+    if book_id is not None:
+        query += " AND ideas.book_id = ?"
+        params.append(book_id)
+    query += " GROUP BY j.value ORDER BY cnt DESC, j.value"
+    rows = conn.execute(query, params).fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
 def count_ideas(
     conn: sqlite3.Connection,
     book_id: int | None = None,

@@ -21,6 +21,7 @@ from anne.services.ideas import (
     count_ideas,
     get_idea,
     get_ideas_by_status,
+    get_tags_with_counts,
     get_unparsed_sources,
     insert_ideas,
     list_ideas_paginated,
@@ -115,6 +116,42 @@ def list_cmd(
 
         console.print(table)
         rprint(f"Page {page}/{total_pages} ({total} total ideas)")
+
+
+@ideas_app.command("tags")
+def tags_cmd(
+    book_slug: Optional[str] = typer.Argument(None, help="Book slug (omit to list tags across all books)"),
+) -> None:
+    """List all tags ordered by usage count."""
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        book: Book | None = None
+        book_id: int | None = None
+        if book_slug:
+            book = get_book(conn, book_slug)
+            if book is None:
+                rprint(f"[red]Error:[/red] book not found: {book_slug}")
+                raise typer.Exit(code=1)
+            book_id = book.id
+
+        results = get_tags_with_counts(conn, book_id=book_id)
+        if not results:
+            rprint("No tags found.")
+            return
+
+        title_parts = ["Tags"]
+        if book:
+            title_parts.append(f'for "{book.title}"')
+        title = " ".join(title_parts)
+
+        table = Table(title=title)
+        table.add_column("Tag")
+        table.add_column("Count", justify="right")
+        for tag, count in results:
+            table.add_row(tag, str(count))
+
+        console.print(table)
+        rprint(f"{len(results)} distinct tags")
 
 
 @ideas_app.command()
