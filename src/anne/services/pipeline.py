@@ -13,6 +13,7 @@ from anne.services.ideas import (
 from anne.services.llm import (
     ContentTooLargeError,
     RateLimitError,
+    TruncatedResponseError,
     caption_ideas_with_llm,
     review_ideas_with_llm,
     triage_ideas_with_llm,
@@ -216,6 +217,8 @@ def format_llm_error(e: Exception) -> str:
     if isinstance(e, RateLimitError):
         return "Rate limited by Gemini API. Wait and retry."
     elif isinstance(e, ContentTooLargeError):
+        return str(e)
+    elif isinstance(e, TruncatedResponseError):
         return str(e)
     elif isinstance(e, ValueError):
         return str(e)

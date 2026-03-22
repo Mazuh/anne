@@ -14,7 +14,7 @@ class Settings(BaseModel):
     llm_call_interval: int = 10
     triage_chunk_size: int = 25
     content_language: str = "pt-BR"
-    review_chunk_size: int = 10
+    review_chunk_size: int = 5
     review_quote_target_length: int = 80
     cta_link: str = ""
     caption_chunk_size: int = 1 # preferred 1 for llm focused quality context

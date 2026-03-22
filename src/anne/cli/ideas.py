@@ -29,7 +29,7 @@ from anne.services.ideas import (
     update_idea,
 )
 from anne.services.parsers import LLM_TYPES, ParsedIdea, parse_kindle_export_html, extract_html_content, parse_source
-from anne.services.llm import ContentTooLargeError, RateLimitError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm
+from anne.services.llm import ContentTooLargeError, RateLimitError, TruncatedResponseError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm
 
 ideas_app = typer.Typer(help="Browse and manage ideas.")
 console = Console()
@@ -300,7 +300,7 @@ def idea_parse(
                 rprint(f"  [dim]{e}[/dim]")
             rprint(f"  [dim]Wait a minute and run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
-        except ContentTooLargeError as e:
+        except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 
@@ -373,7 +373,7 @@ def idea_triage(
                 rprint(f"  [dim]{e}[/dim]")
             rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
-        except ContentTooLargeError as e:
+        except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 
@@ -450,7 +450,7 @@ def idea_review(
                 rprint(f"  [dim]{e}[/dim]")
             rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
-        except ContentTooLargeError as e:
+        except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 
@@ -523,7 +523,7 @@ def idea_caption(
                 rprint(f"  [dim]{e}[/dim]")
             rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
-        except ContentTooLargeError as e:
+        except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
 

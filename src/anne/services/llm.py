@@ -34,6 +34,76 @@ class ContentTooLargeError(Exception):
     """Raised when input content exceeds the configured token limit."""
 
 
+class TruncatedResponseError(Exception):
+    """Raised when the LLM response was truncated and could not be repaired."""
+
+
+def _parse_json_array(response_text: str, context: str) -> list[dict]:
+    """Parse a JSON array from LLM response text, with fallback for markdown fences."""
+    # Strip markdown code fences if present
+    text = response_text.strip()
+    fence_match = re.match(r"^```(?:json)?\s*\n?(.*?)(?:\n?```\s*)?$", text, re.DOTALL)
+    if fence_match:
+        text = fence_match.group(1).strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting a complete JSON array
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    # Try repairing truncated JSON array (response cut off by token limit)
+    array_start = text.find("[")
+    if array_start >= 0:
+        fragment = text[array_start:]
+        repaired = _repair_truncated_json_array(fragment)
+        if repaired is not None:
+            logger.warning(
+                "Repaired truncated %s JSON response. "
+                "Some items at the end may be missing.",
+                context,
+            )
+            return repaired
+
+        # We found a '[' but no complete objects — response was severely truncated
+        raise TruncatedResponseError(
+            f"LLM {context} response was truncated with no complete items. "
+            f"Try reducing chunk size in config. Preview: {response_text[:200]}"
+        )
+
+    raise ValueError(
+        f"Could not parse {context} LLM response as JSON: {response_text[:500]}"
+    )
+
+
+def _repair_truncated_json_array(fragment: str) -> list[dict] | None:
+    """Attempt to recover complete objects from a truncated JSON array.
+
+    Strategy: find the last complete object (ending with '}') and close the array.
+    """
+    # Find the last complete object boundary
+    last_brace = fragment.rfind("}")
+    if last_brace < 0:
+        return None
+
+    candidate = fragment[: last_brace + 1].rstrip().rstrip(",") + "\n]"
+    try:
+        result = json.loads(candidate)
+        if isinstance(result, list) and len(result) > 0:
+            return result
+    except json.JSONDecodeError:
+        pass
+
+    return None
+
+
 def generate(api_key: str, prompt: str, min_interval: int = _MIN_INTERVAL) -> str:
     """Send prompt to Gemini, return text response. Retries on 429/5xx."""
     global _last_call_time
@@ -47,6 +117,13 @@ def generate(api_key: str, prompt: str, min_interval: int = _MIN_INTERVAL) -> st
     url = f"{GEMINI_API_URL}?key={api_key}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "maxOutputTokens": 65536,
+            # Thinking tokens share the maxOutputTokens budget. Without a cap,
+            # the model can spend most of the budget on internal reasoning and
+            # truncate the actual JSON output mid-object.
+            "thinkingConfig": {"thinkingBudget": 2048},
+        },
     }).encode()
     req = urllib.request.Request(
         url,
@@ -90,7 +167,16 @@ def generate(api_key: str, prompt: str, min_interval: int = _MIN_INTERVAL) -> st
         raise RateLimitError("Gemini API rate limit exceeded after retries. Wait a minute and try again.")
 
     try:
-        return body["candidates"][0]["content"]["parts"][0]["text"]
+        candidate = body["candidates"][0]
+    except (KeyError, IndexError) as e:
+        raise ValueError(f"Unexpected Gemini response structure: {e}") from e
+
+    finish_reason = candidate.get("finishReason", "")
+    if finish_reason == "MAX_TOKENS":
+        logger.warning("Gemini response was truncated (MAX_TOKENS). Consider reducing chunk size.")
+
+    try:
+        return candidate["content"]["parts"][0]["text"]
     except (KeyError, IndexError) as e:
         raise ValueError(f"Unexpected Gemini response structure: {e}") from e
 
@@ -143,15 +229,7 @@ def parse_essay_with_llm(api_key: str, content: str, max_input_tokens: int = _DE
     response_text = generate(api_key, prompt)
 
     # Try to extract JSON array from response
-    try:
-        items = json.loads(response_text)
-    except json.JSONDecodeError:
-        # Try to find JSON array in the response (e.g., wrapped in markdown fences)
-        match = re.search(r"\[.*\]", response_text, re.DOTALL)
-        if match:
-            items = json.loads(match.group())
-        else:
-            raise ValueError(f"Could not parse LLM response as JSON: {response_text[:200]}")
+    items = _parse_json_array(response_text, "parse")
 
     ideas: list[ParsedIdea] = []
     for item in items:
@@ -267,14 +345,7 @@ def triage_ideas_with_llm(
 
     response_text = generate(api_key, prompt, min_interval=min_interval)
 
-    try:
-        items = json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\[.*\]", response_text, re.DOTALL)
-        if match:
-            items = json.loads(match.group())
-        else:
-            raise ValueError(f"Could not parse triage LLM response as JSON: {response_text[:200]}")
+    items = _parse_json_array(response_text, "triage")
 
     decisions: list[TriageDecision] = []
     seen_ids: set[int] = set()
@@ -404,14 +475,7 @@ def review_ideas_with_llm(
 
     response_text = generate(api_key, prompt, min_interval=min_interval)
 
-    try:
-        items = json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\[.*\]", response_text, re.DOTALL)
-        if match:
-            items = json.loads(match.group())
-        else:
-            raise ValueError(f"Could not parse review LLM response as JSON: {response_text[:200]}")
+    items = _parse_json_array(response_text, "review")
 
     results: list[ReviewResult] = []
     seen_ids: set[int] = set()
@@ -530,14 +594,7 @@ def caption_ideas_with_llm(
 
     response_text = generate(api_key, prompt, min_interval=min_interval)
 
-    try:
-        items = json.loads(response_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\[.*\]", response_text, re.DOTALL)
-        if match:
-            items = json.loads(match.group())
-        else:
-            raise ValueError(f"Could not parse caption LLM response as JSON: {response_text[:200]}")
+    items = _parse_json_array(response_text, "caption")
 
     results: list[CaptionResult] = []
     seen_ids: set[int] = set()

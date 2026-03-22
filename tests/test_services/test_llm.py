@@ -5,7 +5,7 @@ import pytest
 
 import anne.services.llm as llm_module
 from anne.models import Idea, IdeaStatus
-from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, ContentTooLargeError, RateLimitError
+from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, ContentTooLargeError, RateLimitError, TruncatedResponseError, _parse_json_array, _repair_truncated_json_array
 
 
 @pytest.fixture(autouse=True)
@@ -90,6 +90,36 @@ def test_parse_essay_malformed_json():
     with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
         with pytest.raises(ValueError, match="Could not parse"):
             parse_essay_with_llm("fake-key", "Essay")
+
+
+def test_parse_json_array_strips_markdown_fences():
+    text = '```json\n[{"id": 1}]\n```'
+    assert _parse_json_array(text, "test") == [{"id": 1}]
+
+
+def test_parse_json_array_repairs_truncated_response():
+    text = '```json\n[{"id": 1, "val": "a"}, {"id": 2, "val": "b"}, {"id": 3, "va'
+    result = _parse_json_array(text, "test")
+    assert len(result) == 2
+    assert result[0]["id"] == 1
+    assert result[1]["id"] == 2
+
+
+def test_repair_truncated_json_array_returns_none_for_no_objects():
+    assert _repair_truncated_json_array("[") is None
+    assert _repair_truncated_json_array("") is None
+
+
+def test_repair_truncated_json_array_single_complete_object():
+    result = _repair_truncated_json_array('[{"id": 1}, {"id":')
+    assert result == [{"id": 1}]
+
+
+def test_parse_json_array_raises_truncated_error_when_no_complete_objects():
+    """When the response is truncated inside the first object, raise TruncatedResponseError."""
+    text = '```json\n[{"id": 319, "reviewed_quote": "some quote", "reviewed_comment": "cut off mid-sen'
+    with pytest.raises(TruncatedResponseError, match="truncated with no complete items"):
+        _parse_json_array(text, "review")
 
 
 def _make_idea(idea_id: int, raw_quote: str = "quote", raw_note: str | None = None) -> Idea:
