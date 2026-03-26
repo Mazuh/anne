@@ -407,8 +407,7 @@ For each idea below, produce:
 (soft limit — use more if needed to preserve meaning). If the book's language differs from \
 {content_language}, translate the quote. Remove trailing commas, artifacts, or formatting noise. \
 NEVER rephrase for style — preserve the author's original meaning and voice faithfully. \
-If raw_quote is null, use raw_note as the basis instead. \
-Add **bold** markers (using **asterisks**) on 1-2 key words for visual impact, if any word stands out.
+If raw_quote is null, use raw_note as the basis instead.
 
 2. "reviewed_comment": A single paragraph of factual context. Examples of good context: \
 the author's age or bias at time of writing, historical facts relevant to the passage, \
@@ -427,7 +426,7 @@ Input ideas (JSON array):
 
 Return ONLY a JSON array (no markdown fences, no extra text). Example:
 [
-  {{"id": 1, "reviewed_quote": "shortened **quote**", "reviewed_comment": "factual context paragraph"}}
+  {{"id": 1, "reviewed_quote": "shortened quote", "reviewed_comment": "factual context paragraph"}}
 ]
 """
 
@@ -518,9 +517,10 @@ For each idea below, produce:
 1. "presentation_text": The Instagram caption. Rules:
    - Do NOT repeat the quote — it will be displayed on the image.
    - First line is the hook — the only thing visible before "more" on Instagram. Make it count.
-   - Short paragraphs, concise phrases — Instagram audience has short attention span.
+   - Write exactly 3 to 4 short paragraphs (excluding hashtags). Concise phrases — Instagram audience has short attention span.
+   - Start every paragraph with a relevant emoji.
    - Content: mix context, core idea, why it matters today, tension/paradox revealed.
-   - Include a social CTA (like, follow, share) — choose what feels natural for this content.
+   - One paragraph must be an engagement CTA: randomly pick ONE of like, share, or send to a friend. Never ask for comments.
 {cta_instruction}   - End with 3-5 relevant hashtags (topic-relevant, mix popular and niche).
 
 2. "tags": A list of 2-4 short mood/tone tags (e.g. "poder", "ironia", "melancolia"). \
@@ -541,7 +541,7 @@ Return format example:
 """
 
 _CTA_LINK_INSTRUCTION = """\
-   - Include this link in its own paragraph so it stands out: {cta_link}
+   - Include this link in its own paragraph with an emoji before it so it stands out: {cta_link}
 """
 
 _NO_CTA_LINK_INSTRUCTION = ""
