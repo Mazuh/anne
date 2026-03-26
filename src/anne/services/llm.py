@@ -139,6 +139,15 @@ def generate(api_key: str, prompt: str, min_interval: int = _MIN_INTERVAL) -> st
                 body = json.loads(resp.read())
             _last_call_time = time.monotonic()
             break
+        except (TimeoutError, OSError) as e:
+            if attempt < _MAX_RETRIES - 1:
+                wait = _INITIAL_BACKOFF * (2 ** attempt)
+                rprint(f"  [yellow]Request timed out, retrying in {int(wait)}s... ({e})[/yellow]")
+                time.sleep(wait)
+                continue
+            raise TimeoutError(
+                "Gemini API timed out after retries. Check your connection and try again."
+            ) from e
         except urllib.error.HTTPError as e:
             detail = ""
             try:

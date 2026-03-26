@@ -338,6 +338,11 @@ def idea_parse(
                 rprint(f"  [dim]{e}[/dim]")
             rprint(f"  [dim]Wait a minute and run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
+        except TimeoutError as e:
+            rprint("  [red]API request timed out.[/red] Progress so far has been saved.")
+            rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
         except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
@@ -410,6 +415,11 @@ def idea_triage(
             if str(e):
                 rprint(f"  [dim]{e}[/dim]")
             rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
+        except TimeoutError as e:
+            rprint("  [red]API request timed out.[/red] Progress so far has been saved.")
+            rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
         except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
@@ -488,6 +498,11 @@ def idea_review(
                 rprint(f"  [dim]{e}[/dim]")
             rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
+        except TimeoutError as e:
+            rprint("  [red]API request timed out.[/red] Progress so far has been saved.")
+            rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
         except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
             raise typer.Exit(code=1)
@@ -560,6 +575,11 @@ def idea_caption(
             if str(e):
                 rprint(f"  [dim]{e}[/dim]")
             rprint("  [dim]Wait a minute and run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
+        except TimeoutError as e:
+            rprint("  [red]API request timed out.[/red] Progress so far has been saved.")
+            rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Run the command again to continue.[/dim]")
             raise typer.Exit(code=1)
         except (ContentTooLargeError, TruncatedResponseError) as e:
             rprint(f"  [red]Error:[/red] {e}")
@@ -638,6 +658,11 @@ def idea_digest_notes(
         if str(e):
             rprint(f"  [dim]{e}[/dim]")
         rprint("  [dim]Wait a minute and run the command again.[/dim]")
+        raise typer.Exit(code=1)
+    except TimeoutError as e:
+        rprint("  [red]API request timed out.[/red]")
+        rprint(f"  [dim]{e}[/dim]")
+        rprint("  [dim]Run the command again to retry.[/dim]")
         raise typer.Exit(code=1)
     except (ContentTooLargeError, TruncatedResponseError) as e:
         rprint(f"  [red]Error:[/red] {e}")
