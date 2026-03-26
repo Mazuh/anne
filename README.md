@@ -12,104 +12,53 @@ Her diary is one of my favorite books, I was very touched by her story
 and how she loved to read, study languages, do research and write to the world
 or, in any case, just to write for herself.
 
-## Setting up locally
+## Setup
 
 Requires Python 3.14 and [uv](https://docs.astral.sh/uv/):
 
 ```sh
-# install dependencies
 uv sync
-
-# activate the virtual environment
-source .venv/bin/activate
 ```
 
 ## Usage
 
-First, initialize the workspace (creates directories and database):
+Initialize the workspace, then follow the hint to set up a shell alias:
 
 ```sh
 anne bootstrap
 ```
 
-A hint will show up to make `anne` globally available as a shell alias. The examples below assume you did it (otherwise stay in the project directory and use `uv run anne`).
+The examples below assume the alias is set (otherwise use `uv run anne`). Check workspace health anytime with `anne doctor`.
 
-Check workspace health anytime with `anne doctor`.
-
-### Books management
-
-Add a book to group pipeline inputs and outputs. The `--author` flag is optional (useful for books with the same title):
+### Pipeline
 
 ```sh
-anne books add "O Príncipe" --author "Maquiavel"
+anne books add "O Príncipe" --author "Maquiavel"   # add a book
+anne sources import o-principe <file-or-url>        # import reading notes
+anne ideas parse [slug]                             # extract ideas from sources
+anne ideas triage [slug]                            # LLM triage (keep/reject)
+anne ideas review [slug]                            # LLM review (refine quotes, add context)
+anne ideas caption [slug]                           # LLM caption for Instagram
+```
+
+### Browsing and editing
+
+```sh
 anne books list
-```
-
-### Importing sources
-
-Import reading notes or essays about a book. Sources can be Kindle HTML exports, essay files, or SSR URLs:
-
-```sh
-anne sources import o-principe https://notebook.mazuh.com/p/a-logica-politica-eterna-do-principe
-anne sources list o-principe
-```
-
-### Idea parsing — status: "parsed"
-
-Parse sources into ideas. Kindle HTML parsing is deterministic; essays use LLM. The book slug is optional (omit to parse all books):
-
-```sh
-anne ideas parse o-principe
-anne ideas parse
-```
-
-### Idea triage — status: "triaged" or "rejected"
-
-Triage parsed ideas using LLM (lenient first pass). Each idea is either kept or rejected:
-
-```sh
-anne ideas triage
-```
-
-### Idea review — status: "reviewed"
-
-Triaged ideas get refined and translated quotes plus factual context via LLM:
-
-```sh
-anne ideas review
-```
-
-### Idea caption — status: "ready"
-
-Generate Instagram captions for reviewed ideas using LLM:
-
-```sh
-anne ideas caption
-```
-
-### Browsing and editing ideas
-
-List, view, and edit ideas without raw SQL:
-
-```sh
-anne ideas list o-principe --status triaged --page 1 --per-page 25
+anne ideas list o-principe --status triaged
 anne ideas show 42
 anne ideas edit 42 --status reviewed --force
 anne ideas edit 42 --reviewed-quote "New text" --tags '["poder"]'
 ```
 
-### TUI mode
-
-Open a keyboard-driven terminal UI for browsing and editing ideas:
+### TUI
 
 ```sh
-anne start               # opens dashboard with all books
-anne start o-principe    # opens directly into book workspace
+anne start               # dashboard with all books
+anne start o-principe    # jump into a book workspace
 ```
 
 Keybindings: `j/k` navigate, `a` triage, `x` reject, `u` unreject, `e` edit field, `t` edit tags, `E` open in `$EDITOR`, `f` filter by status, `/` search, `n/p` page, `q` back.
-
-More pipeline commands (asset matching, media generation) are coming in future phases.
 
 ## Planning
 
