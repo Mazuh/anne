@@ -18,6 +18,7 @@ class Settings(BaseModel):
     review_quote_target_length: int = 80
     cta_link: str = ""
     caption_chunk_size: int = 1 # preferred 1 for llm focused quality context
+    digest_chunk_size: int = 25
     db_backup_dir: Path | None = None
 
     @property
@@ -51,7 +52,7 @@ def save_settings(settings: Settings) -> None:
     for field_name in (
         "max_llm_input_tokens", "llm_call_interval", "triage_chunk_size",
         "content_language", "review_chunk_size", "review_quote_target_length",
-        "cta_link", "caption_chunk_size",
+        "cta_link", "caption_chunk_size", "digest_chunk_size",
     ):
         value = getattr(settings, field_name)
         if value != getattr(defaults, field_name):

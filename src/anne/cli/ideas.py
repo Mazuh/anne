@@ -19,6 +19,7 @@ from anne.services.ideas import (
     triage_approve_idea,
     caption_idea,
     count_ideas,
+    get_commented_ideas,
     get_idea,
     get_ideas_by_status,
     get_tags_with_counts,
@@ -30,7 +31,7 @@ from anne.services.ideas import (
     update_idea,
 )
 from anne.services.parsers import LLM_TYPES, ParsedIdea, parse_kindle_export_html, extract_html_content, parse_source
-from anne.services.llm import ContentTooLargeError, RateLimitError, TruncatedResponseError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm
+from anne.services.llm import ContentTooLargeError, RateLimitError, TruncatedResponseError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, digest_notes_with_llm, synthesize_digest_with_llm
 
 ideas_app = typer.Typer(help="Browse and manage ideas.")
 console = Console()
@@ -566,3 +567,88 @@ def idea_caption(
 
     label = "idea" if total_captioned == 1 else "ideas"
     rprint(f"\n[bold]Total: {total_captioned} {label} captioned[/bold]")
+
+
+@ideas_app.command("digest-notes")
+def idea_digest_notes(
+    book_slug: str = typer.Argument(help="Book slug"),
+) -> None:
+    """Generate a thematic digest of your annotated ideas to help prepare a literary essay."""
+    from datetime import datetime
+
+    settings = load_settings()
+    api_key = settings.gemini_api_key
+    if not api_key:
+        rprint("[red]Error:[/red] gemini_api_key is not configured.")
+        raise typer.Exit(code=1)
+
+    with get_connection(settings.db_path) as conn:
+        book = get_book(conn, book_slug)
+        if book is None:
+            rprint(f"[red]Error:[/red] book not found: {book_slug}")
+            raise typer.Exit(code=1)
+
+        ideas = get_commented_ideas(conn, book.id)
+
+    if not ideas:
+        rprint(f"No triaged+ ideas with comments found for [bold]{book.title}[/bold].")
+        rprint("[dim]Ideas need a raw_note (your own comment/annotation) and be at least triaged.[/dim]")
+        raise typer.Exit(code=1)
+
+    label = "idea" if len(ideas) == 1 else "ideas"
+    rprint(f"[bold]{book.title}[/bold] — {len(ideas)} commented {label} to digest")
+
+    try:
+        chunks = [
+            ideas[i : i + settings.digest_chunk_size]
+            for i in range(0, len(ideas), settings.digest_chunk_size)
+        ]
+
+        chunk_digests: list[str] = []
+        for idx, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                rprint(f"  Processing chunk {idx + 1}/{len(chunks)} ({len(chunk)} ideas)...")
+            digest = digest_notes_with_llm(
+                api_key=api_key,
+                book_title=book.title,
+                book_author=book.author,
+                ideas=chunk,
+                content_language=settings.content_language,
+                max_input_tokens=settings.max_llm_input_tokens,
+                min_interval=settings.llm_call_interval,
+            )
+            chunk_digests.append(digest)
+
+        if len(chunk_digests) > 1:
+            rprint("  Synthesizing all chunks into a single digest...")
+            final_digest = synthesize_digest_with_llm(
+                api_key=api_key,
+                book_title=book.title,
+                book_author=book.author,
+                chunk_digests=chunk_digests,
+                content_language=settings.content_language,
+                max_input_tokens=settings.max_llm_input_tokens,
+                min_interval=settings.llm_call_interval,
+            )
+        else:
+            final_digest = chunk_digests[0]
+
+    except RateLimitError as e:
+        rprint("  [red]Rate limited by Gemini API.[/red]")
+        if str(e):
+            rprint(f"  [dim]{e}[/dim]")
+        rprint("  [dim]Wait a minute and run the command again.[/dim]")
+        raise typer.Exit(code=1)
+    except (ContentTooLargeError, TruncatedResponseError) as e:
+        rprint(f"  [red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    now = datetime.now()
+    seconds_in_day = now.hour * 3600 + now.minute * 60 + now.second
+    filename = f"{now.strftime('%Y-%m-%d')}-{seconds_in_day}-{book.slug}.md"
+    book_dir = settings.books_dir / book.slug
+    book_dir.mkdir(parents=True, exist_ok=True)
+    output_path = book_dir / filename
+    output_path.write_text(final_digest, encoding="utf-8")
+
+    rprint(f"\n[green]Digest saved:[/green] {output_path}")

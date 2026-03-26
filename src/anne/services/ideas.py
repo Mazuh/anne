@@ -50,6 +50,20 @@ def list_ideas(conn: sqlite3.Connection, book_id: int) -> list[Idea]:
     return [Idea(**dict(r)) for r in rows]
 
 
+def get_commented_ideas(conn: sqlite3.Connection, book_id: int) -> list[Idea]:
+    """Get triaged+ ideas that have a non-empty raw_note (reader's own comments)."""
+    rows = conn.execute(
+        """SELECT * FROM ideas
+           WHERE book_id = ?
+           AND status IN (?, ?, ?)
+           AND raw_note IS NOT NULL
+           AND TRIM(raw_note) != ''
+           ORDER BY id""",
+        (book_id, IdeaStatus.triaged, IdeaStatus.reviewed, IdeaStatus.ready),
+    ).fetchall()
+    return [Idea(**dict(r)) for r in rows]
+
+
 def get_ideas_by_status(
     conn: sqlite3.Connection, book_id: int, status: IdeaStatus
 ) -> list[Idea]:

@@ -627,3 +627,143 @@ def caption_ideas_with_llm(
         logger.warning("Caption: LLM omitted %d idea(s), they will stay reviewed: %s", len(missing_ids), missing_ids)
 
     return results
+
+
+_DIGEST_PROMPT_TEMPLATE = """\
+You are an assistant helping a reader prepare to write a literary essay (ensaio literário) \
+about the book "{book_title}" by {book_author}.
+
+Below are the reader's annotated highlights — each has a quote from the book and/or the \
+reader's own comment/note, plus a reference (chapter, page, etc.) when available.
+
+Your task:
+1. Group these annotations by theme or topic. Choose clear, descriptive theme names.
+2. Under each theme, list bullet points. Each bullet should include:
+   - The quote (if available), in quotes
+   - The reader's note/comment (if available), clearly attributed as the reader's thought
+   - The reference (if available)
+3. Identify the 5-10 most essay-worthy quotes/annotations across all themes. Mark them \
+with ⭐ at the start of the bullet point.
+4. At the end of each theme section, add a brief note on how rich that theme is for \
+essay writing (e.g., "This theme has strong material for a central argument" or \
+"Only one annotation here — might work as a supporting point").
+
+All output MUST be in {content_language}. Write in markdown format.
+
+Do NOT write the essay. Do NOT add your own literary analysis. Simply organize and \
+highlight the reader's own material.
+
+<BEGIN_ANNOTATIONS>
+{ideas_text}
+<END_ANNOTATIONS>
+"""
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Strip wrapping markdown fences (```markdown ... ```) if the model added them."""
+    text = text.strip()
+    fence_match = re.match(r"^```(?:markdown)?\s*\n?(.*?)(?:\n?```\s*)?$", text, re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).strip()
+    return text
+
+
+def _format_ideas_for_digest(ideas: list[Idea]) -> str:
+    """Format ideas as numbered text entries for the digest prompt."""
+    lines: list[str] = []
+    for idea in ideas:
+        parts = [f"[ID {idea.id}]"]
+        quote = idea.reviewed_quote or idea.raw_quote
+        if quote:
+            parts.append(f'Quote: "{quote}"')
+        if idea.raw_note:
+            parts.append(f"Reader's note: {idea.raw_note}")
+        if idea.raw_ref:
+            parts.append(f"Ref: {idea.raw_ref}")
+        lines.append("\n".join(parts))
+    return "\n\n".join(lines)
+
+
+def digest_notes_with_llm(
+    api_key: str,
+    book_title: str,
+    book_author: str,
+    ideas: list[Idea],
+    content_language: str = "pt-BR",
+    max_input_tokens: int = 7500,
+    min_interval: int = 10,
+) -> str:
+    """Produce a thematic digest of the reader's annotated ideas. Returns markdown."""
+    ideas_text = _format_ideas_for_digest(ideas)
+    prompt = _DIGEST_PROMPT_TEMPLATE.format(
+        book_title=book_title,
+        book_author=book_author,
+        ideas_text=ideas_text,
+        content_language=content_language,
+    )
+
+    max_chars = max_input_tokens * _CHARS_PER_TOKEN
+    if len(prompt) > max_chars:
+        raise ContentTooLargeError(
+            f"Digest prompt too large ({len(prompt):,} chars, estimated ~{len(prompt) // 3:,} tokens). "
+            f"Max allowed: ~{max_input_tokens:,} tokens. "
+            f"Try reducing digest_chunk_size in config."
+        )
+
+    response_text = generate(api_key, prompt, min_interval=min_interval)
+    return _strip_markdown_fences(response_text)
+
+
+_SYNTHESIZE_PROMPT_TEMPLATE = """\
+You are an assistant helping a reader prepare to write a literary essay (ensaio literário) \
+about the book "{book_title}" by {book_author}.
+
+Below are multiple partial digests of the reader's annotated highlights, each covering a \
+different subset of annotations. They were produced separately due to volume.
+
+Your task: merge and reorganize all the partial digests into a single coherent document:
+1. Combine themes that overlap across partials into unified sections.
+2. Preserve all bullet points — do not drop any annotations.
+3. Keep the ⭐ markers on the most essay-worthy items. You may adjust which items are \
+starred now that you can see the full picture (aim for 5-10 total).
+4. At the end of each theme, include a brief note on how rich that theme is for essay writing.
+
+All output MUST be in {content_language}. Write in markdown format.
+
+Do NOT write the essay. Do NOT add your own literary analysis.
+
+<BEGIN_PARTIAL_DIGESTS>
+{digests_text}
+<END_PARTIAL_DIGESTS>
+"""
+
+
+def synthesize_digest_with_llm(
+    api_key: str,
+    book_title: str,
+    book_author: str,
+    chunk_digests: list[str],
+    content_language: str = "pt-BR",
+    max_input_tokens: int = 7500,
+    min_interval: int = 10,
+) -> str:
+    """Merge multiple partial digests into a single thematic document. Returns markdown."""
+    digests_text = "\n\n---\n\n".join(
+        f"### Partial digest {i + 1}\n\n{d}" for i, d in enumerate(chunk_digests)
+    )
+    prompt = _SYNTHESIZE_PROMPT_TEMPLATE.format(
+        book_title=book_title,
+        book_author=book_author,
+        digests_text=digests_text,
+        content_language=content_language,
+    )
+
+    max_chars = max_input_tokens * _CHARS_PER_TOKEN
+    if len(prompt) > max_chars:
+        raise ContentTooLargeError(
+            f"Synthesis prompt too large ({len(prompt):,} chars, estimated ~{len(prompt) // 3:,} tokens). "
+            f"Max allowed: ~{max_input_tokens:,} tokens."
+        )
+
+    response_text = generate(api_key, prompt, min_interval=min_interval)
+    return _strip_markdown_fences(response_text)

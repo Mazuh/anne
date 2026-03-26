@@ -5,7 +5,7 @@ import pytest
 
 import anne.services.llm as llm_module
 from anne.models import Idea, IdeaStatus
-from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, ContentTooLargeError, RateLimitError, TruncatedResponseError, _parse_json_array, _repair_truncated_json_array
+from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, digest_notes_with_llm, synthesize_digest_with_llm, ContentTooLargeError, RateLimitError, TruncatedResponseError, _parse_json_array, _repair_truncated_json_array
 
 
 @pytest.fixture(autouse=True)
@@ -347,3 +347,78 @@ def test_caption_ideas_with_llm_content_too_large():
     ideas = [_make_reviewed_idea(1, reviewed_quote="x" * 10000)]
     with pytest.raises(ContentTooLargeError, match="Caption prompt too large"):
         caption_ideas_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)
+
+
+# --- digest_notes_with_llm tests ---
+
+
+def _make_commented_idea(idea_id: int, raw_quote: str = "quote", raw_note: str = "note", raw_ref: str | None = "Ch.1") -> Idea:
+    return Idea(
+        id=idea_id, book_id=1, source_id=1, status=IdeaStatus.triaged,
+        raw_quote=raw_quote, raw_note=raw_note, raw_ref=raw_ref,
+        created_at="2026-01-01T00:00:00", updated_at="2026-01-01T00:00:00",
+    )
+
+
+def test_digest_notes_with_llm_returns_markdown():
+    ideas = [
+        _make_commented_idea(1, raw_quote="Power is not a means", raw_note="Key theme"),
+        _make_commented_idea(2, raw_quote="War is peace", raw_note="Orwellian paradox"),
+    ]
+    markdown_response = "## Theme: Power\n\n- ⭐ \"Power is not a means\" — Reader: Key theme (Ch.1)\n"
+    mock = _mock_urlopen(_gemini_response(markdown_response))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = digest_notes_with_llm("fake-key", "1984", "George Orwell", ideas)
+    assert "Power" in result
+    assert isinstance(result, str)
+
+
+def test_digest_notes_with_llm_strips_markdown_fences():
+    ideas = [_make_commented_idea(1)]
+    fenced = "```markdown\n## Themes\n\n- Item 1\n```"
+    mock = _mock_urlopen(_gemini_response(fenced))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = digest_notes_with_llm("fake-key", "Book", "Author", ideas)
+    assert not result.startswith("```")
+    assert "Themes" in result
+
+
+def test_digest_notes_with_llm_content_too_large():
+    ideas = [_make_commented_idea(1, raw_quote="x" * 10000)]
+    with pytest.raises(ContentTooLargeError, match="Digest prompt too large"):
+        digest_notes_with_llm("fake-key", "Book", "Author", ideas, max_input_tokens=100)
+
+
+def test_digest_notes_with_llm_uses_reviewed_quote_when_available():
+    idea = Idea(
+        id=1, book_id=1, source_id=1, status=IdeaStatus.reviewed,
+        raw_quote="Long original quote from the book",
+        raw_note="My comment",
+        reviewed_quote="Short refined quote",
+        reviewed_comment="Factual context",
+        created_at="2026-01-01T00:00:00", updated_at="2026-01-01T00:00:00",
+    )
+    mock = _mock_urlopen(_gemini_response("## Theme\n\n- Item"))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock) as mock_call:
+        digest_notes_with_llm("fake-key", "Book", "Author", [idea])
+    # Check that the prompt sent to the API includes the reviewed_quote
+    call_data = json.loads(mock_call.call_args[0][0].data)
+    prompt_text = call_data["contents"][0]["parts"][0]["text"]
+    assert "Short refined quote" in prompt_text
+
+
+def test_synthesize_digest_with_llm_merges_chunks():
+    chunk1 = "## Theme A\n\n- Item 1"
+    chunk2 = "## Theme B\n\n- Item 2"
+    merged = "## Theme A\n\n- Item 1\n\n## Theme B\n\n- Item 2"
+    mock = _mock_urlopen(_gemini_response(merged))
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = synthesize_digest_with_llm("fake-key", "Book", "Author", [chunk1, chunk2])
+    assert "Theme A" in result
+    assert "Theme B" in result
+
+
+def test_synthesize_digest_with_llm_content_too_large():
+    chunks = ["x" * 10000]
+    with pytest.raises(ContentTooLargeError, match="Synthesis prompt too large"):
+        synthesize_digest_with_llm("fake-key", "Book", "Author", chunks, max_input_tokens=100)

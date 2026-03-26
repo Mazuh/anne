@@ -7,6 +7,7 @@ from anne.models import IdeaStatus, SourceType
 from anne.services.books import create_book
 from anne.services.ideas import (
     count_ideas,
+    get_commented_ideas,
     get_idea,
     insert_ideas,
     list_ideas_paginated,
@@ -184,3 +185,70 @@ def test_update_idea_reject_transition(tmp_db: sqlite3.Connection):
     updated = update_idea(tmp_db, ideas[0].id, status="rejected", rejection_reason="bad")
     assert updated.status == IdeaStatus.rejected
     assert updated.rejection_reason == "bad"
+
+
+# --- get_commented_ideas ---
+
+
+def test_get_commented_ideas_returns_triaged_with_notes(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    parsed = [
+        ParsedIdea(raw_quote="Quote 1", raw_note="My comment"),
+        ParsedIdea(raw_quote="Quote 2"),  # no note
+        ParsedIdea(raw_quote="Quote 3", raw_note="Another thought"),
+    ]
+    ideas = insert_ideas(tmp_db, book.id, source.id, parsed)
+    # Triage all
+    for idea in ideas:
+        triage_approve_idea(tmp_db, idea.id)
+    result = get_commented_ideas(tmp_db, book.id)
+    assert len(result) == 2
+    assert {r.raw_note for r in result} == {"My comment", "Another thought"}
+
+
+def test_get_commented_ideas_excludes_parsed_and_rejected(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    parsed = [
+        ParsedIdea(raw_quote="Q1", raw_note="Note 1"),  # will stay parsed
+        ParsedIdea(raw_quote="Q2", raw_note="Note 2"),  # will be triaged
+    ]
+    ideas = insert_ideas(tmp_db, book.id, source.id, parsed)
+    triage_approve_idea(tmp_db, ideas[1].id)
+    result = get_commented_ideas(tmp_db, book.id)
+    assert len(result) == 1
+    assert result[0].raw_note == "Note 2"
+
+
+def test_get_commented_ideas_includes_reviewed_and_ready(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    parsed = [
+        ParsedIdea(raw_quote="Q1", raw_note="Note 1"),
+        ParsedIdea(raw_quote="Q2", raw_note="Note 2"),
+    ]
+    ideas = insert_ideas(tmp_db, book.id, source.id, parsed)
+    for idea in ideas:
+        triage_approve_idea(tmp_db, idea.id)
+    review_idea(tmp_db, ideas[0].id, "Reviewed Q1", "Comment 1")
+    result = get_commented_ideas(tmp_db, book.id)
+    assert len(result) == 2
+
+
+def test_get_commented_ideas_excludes_empty_notes(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    parsed = [
+        ParsedIdea(raw_quote="Q1", raw_note=""),
+        ParsedIdea(raw_quote="Q2", raw_note="   "),
+        ParsedIdea(raw_quote="Q3", raw_note="Real note"),
+    ]
+    ideas = insert_ideas(tmp_db, book.id, source.id, parsed)
+    for idea in ideas:
+        triage_approve_idea(tmp_db, idea.id)
+    result = get_commented_ideas(tmp_db, book.id)
+    assert len(result) == 1
+    assert result[0].raw_note == "Real note"
+
+
+def test_get_commented_ideas_empty_book(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    result = get_commented_ideas(tmp_db, book.id)
+    assert result == []

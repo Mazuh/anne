@@ -616,3 +616,141 @@ def test_idea_caption_rate_limited(tmp_settings: Settings):
     assert result.exit_code == 1
     assert "Rate limited" in result.output
     assert "Progress so far has been saved" in result.output
+
+
+# --- ideas digest-notes tests ---
+
+
+def _setup_book_with_commented_ideas(tmp_settings: Settings) -> None:
+    """Create a book with triaged ideas that have raw_note (comments)."""
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        book = create_book(conn, "Test Book", "Author")
+        source = import_source(
+            conn, book.id, SourceType.kindle_export_html, "sources/kindle/notes.html", "fp1"
+        )
+        ideas = insert_ideas(conn, book.id, source.id, [
+            ParsedIdea(raw_quote="A great insight", raw_note="This is key to the argument"),
+            ParsedIdea(raw_quote="Another passage", raw_note="Connects to chapter 3"),
+            ParsedIdea(raw_quote="Just a highlight"),  # no note — should be excluded
+        ])
+        for idea in ideas:
+            triage_approve_idea(conn, idea.id)
+
+
+def _mock_digest_response(markdown: str) -> MagicMock:
+    body = {
+        "candidates": [
+            {"content": {"parts": [{"text": markdown}]}}
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(body).encode()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
+
+
+def test_idea_digest_notes_happy_path(tmp_settings: Settings):
+    _setup_book_with_commented_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    mock_resp = _mock_digest_response("## Theme: Power\n\n- ⭐ \"A great insight\" — Reader: This is key\n")
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.urllib.request.urlopen", return_value=mock_resp),
+    ):
+        result = runner.invoke(app, ["ideas", "digest-notes", "test-book"])
+    assert result.exit_code == 0
+    assert "2 commented ideas to digest" in result.output
+    assert "Digest saved:" in result.output
+
+    # Verify the file was actually created
+    book_dir = tmp_settings.books_dir / "test-book"
+    md_files = list(book_dir.glob("*.md"))
+    assert len(md_files) == 1
+    content = md_files[0].read_text()
+    assert "Power" in content
+
+
+def test_idea_digest_notes_no_commented_ideas(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        book = create_book(conn, "Empty Book", "Author")
+        source = import_source(
+            conn, book.id, SourceType.kindle_export_html, "sources/kindle/notes.html", "fp1"
+        )
+        # Insert ideas without notes, then triage them
+        ideas = insert_ideas(conn, book.id, source.id, [
+            ParsedIdea(raw_quote="Just a highlight"),
+        ])
+        triage_approve_idea(conn, ideas[0].id)
+
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["ideas", "digest-notes", "empty-book"])
+    assert result.exit_code == 1
+    assert "No triaged+ ideas with comments" in result.output
+
+
+def test_idea_digest_notes_book_not_found(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+    with patch("anne.cli.ideas.load_settings", return_value=settings_with_key):
+        result = runner.invoke(app, ["ideas", "digest-notes", "nonexistent"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_digest_notes_missing_api_key(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    settings_no_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key=None)
+    with patch("anne.cli.ideas.load_settings", return_value=settings_no_key):
+        result = runner.invoke(app, ["ideas", "digest-notes", "test-book"])
+    assert result.exit_code == 1
+    assert "gemini_api_key" in result.output
+
+
+def test_idea_digest_notes_rate_limited(tmp_settings: Settings):
+    _setup_book_with_commented_ideas(tmp_settings)
+    settings_with_key = Settings(root_dir=tmp_settings.root_dir, gemini_api_key="fake-key")
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.cli.ideas.digest_notes_with_llm", side_effect=RateLimitError("rate limited")),
+    ):
+        result = runner.invoke(app, ["ideas", "digest-notes", "test-book"])
+    assert result.exit_code == 1
+    assert "Rate limited" in result.output
+
+
+def test_idea_digest_notes_multi_chunk_with_synthesis(tmp_settings: Settings):
+    _setup_book_with_commented_ideas(tmp_settings)
+    settings_with_key = Settings(
+        root_dir=tmp_settings.root_dir,
+        gemini_api_key="fake-key",
+        digest_chunk_size=1,  # force multiple chunks
+    )
+
+    call_count = 0
+
+    def mock_generate(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            return f"## Chunk {call_count}\n\n- Item from chunk {call_count}"
+        return "## Merged\n\n- Item from chunk 1\n- Item from chunk 2"
+
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=settings_with_key),
+        patch("anne.services.llm.generate", side_effect=mock_generate),
+    ):
+        result = runner.invoke(app, ["ideas", "digest-notes", "test-book"])
+    assert result.exit_code == 0
+    assert "chunk 1/2" in result.output
+    assert "chunk 2/2" in result.output
+    assert "Synthesizing" in result.output
+    assert "Digest saved:" in result.output
+    # 2 chunk calls + 1 synthesis call
+    assert call_count == 3
