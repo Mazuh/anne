@@ -22,6 +22,7 @@ from anne.services.ideas import (
     get_commented_ideas,
     get_idea,
     get_ideas_by_status,
+    get_sample_quotes_by_tag,
     get_tags_with_counts,
     get_unparsed_sources,
     insert_ideas,
@@ -31,7 +32,7 @@ from anne.services.ideas import (
     update_idea,
 )
 from anne.services.parsers import LLM_TYPES, ParsedIdea, parse_kindle_export_html, extract_html_content, parse_source
-from anne.services.llm import ContentTooLargeError, RateLimitError, TruncatedResponseError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, digest_notes_with_llm, synthesize_digest_with_llm
+from anne.services.llm import ContentTooLargeError, RateLimitError, TruncatedResponseError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, digest_notes_with_llm, synthesize_digest_with_llm, generate_video_prompts
 
 ideas_app = typer.Typer(help="Browse and manage ideas.")
 console = Console()
@@ -676,3 +677,68 @@ def idea_digest_notes(
     output_path.write_text(final_digest, encoding="utf-8")
 
     rprint(f"\n[green]Digest saved:[/green] {output_path}")
+
+
+@ideas_app.command("video-prompts")
+def video_prompts_cmd(
+    book_slug: str = typer.Argument(help="Book slug"),
+    count: int = typer.Option(3, "--count", "-n", help="Number of video prompts to generate", min=1),
+) -> None:
+    """Generate video background prompt suggestions for a book's quote posts."""
+    settings = load_settings()
+    api_key = settings.gemini_api_key
+    if not api_key:
+        rprint("[red]Error:[/red] gemini_api_key is not configured.")
+        raise typer.Exit(code=1)
+
+    with get_connection(settings.db_path) as conn:
+        book = get_book(conn, book_slug)
+        if book is None:
+            rprint(f"[red]Error:[/red] book not found: {book_slug}")
+            raise typer.Exit(code=1)
+
+        tags = get_tags_with_counts(conn, book.id)
+        if not tags:
+            rprint(f"No tags found for [bold]{book.title}[/bold].")
+            rprint("[dim]Ideas need to be captioned first (anne ideas caption).[/dim]")
+            raise typer.Exit(code=1)
+
+        sample_quotes = get_sample_quotes_by_tag(conn, book.id)
+
+    rprint(f"Generating {count} video prompts for [bold]{book.title}[/bold]...")
+
+    try:
+        results = generate_video_prompts(
+            api_key=api_key,
+            book_title=book.title,
+            book_author=book.author,
+            tags_with_counts=tags,
+            sample_quotes=sample_quotes,
+            count=count,
+            min_interval=settings.llm_call_interval,
+        )
+    except RateLimitError as e:
+        rprint("[red]Rate limited by Gemini API.[/red]")
+        if str(e):
+            rprint(f"[dim]{e}[/dim]")
+        rprint("[dim]Wait a minute and run the command again.[/dim]")
+        raise typer.Exit(code=1)
+    except TimeoutError as e:
+        rprint("[red]API request timed out.[/red]")
+        rprint(f"[dim]{e}[/dim]")
+        rprint("[dim]Run the command again to retry.[/dim]")
+        raise typer.Exit(code=1)
+    except (ContentTooLargeError, TruncatedResponseError) as e:
+        rprint(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    if len(results) < count:
+        rprint(f"[yellow]Warning:[/yellow] requested {count} prompts but got {len(results)}.")
+
+    rprint(f"\n[bold]Video prompts for \"{escape(book.title)}\" by {escape(book.author)}[/bold]\n")
+    for i, result in enumerate(results, 1):
+        rprint(f"[bold]{i}.[/bold] {escape(result.prompt)}")
+        if result.matching_tags:
+            tags_str = ", ".join(result.matching_tags)
+            rprint(f"   [dim]Tags: {escape(tags_str)}[/dim]")
+        rprint()

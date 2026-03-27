@@ -776,3 +776,90 @@ def synthesize_digest_with_llm(
 
     response_text = generate(api_key, prompt, min_interval=min_interval)
     return _strip_markdown_fences(response_text)
+
+
+_VIDEO_PROMPTS_TEMPLATE = """\
+You are a visual creative director generating text prompts for AI video generation tools.
+
+The videos will be used as ~6-second looping background clips behind Instagram quote posts \
+from the book "{book_title}" by {book_author}.
+
+The book's themes and their relative weight (tag: count of quotes):
+{tags_summary}
+
+Sample quotes for context:
+{sample_quotes}
+
+Generate exactly {count} video background prompts. Requirements:
+- Each prompt describes a short, visually rich scene suitable for a ~6s seamless loop
+- No text, no people's faces, no recognizable logos in the scenes
+- Cover the diversity of the book's themes — distribute prompts across different tags/vibes
+- Prompts should evoke mood and atmosphere, not illustrate quotes literally
+- Think: abstract textures, nature scenes, slow camera movements, atmospheric lighting, \
+color palettes that match the emotional tone
+- Each prompt should be 1-3 sentences, specific enough for an AI image/video generator
+- Include camera movement suggestions (slow pan, dolly, static, etc.)
+- Include lighting/color mood (warm golden hour, cool blue twilight, etc.)
+- All prompts MUST be in English (these feed into an English-only video generation tool)
+
+For each prompt, also suggest which tags/vibes it would pair well with.
+
+Return ONLY a JSON array (no markdown fences, no extra text). Example format:
+[
+  {{"prompt": "Slow dolly forward through a misty forest at dawn, golden light filtering \
+through ancient trees, particles of dust floating in sunbeams", "matching_tags": ["nature", "contemplation"]}}
+]
+"""
+
+
+@dataclass
+class VideoPromptResult:
+    """A video background prompt suggestion with matching tags."""
+
+    prompt: str
+    matching_tags: list[str]
+
+
+def generate_video_prompts(
+    api_key: str,
+    book_title: str,
+    book_author: str,
+    tags_with_counts: list[tuple[str, int]],
+    sample_quotes: dict[str, list[str]],
+    count: int = 3,
+    min_interval: int = 10,
+) -> list[VideoPromptResult]:
+    """Generate video background prompt suggestions for a book's quote posts."""
+    tags_summary = "\n".join(
+        f"- {tag} ({cnt} quotes)" for tag, cnt in tags_with_counts
+    )
+
+    quotes_lines: list[str] = []
+    for tag, quotes in sample_quotes.items():
+        for quote in quotes:
+            quotes_lines.append(f"- [{tag}] \"{quote}\"")
+    sample_quotes_text = "\n".join(quotes_lines) if quotes_lines else "(no sample quotes available)"
+
+    prompt = _VIDEO_PROMPTS_TEMPLATE.format(
+        book_title=book_title,
+        book_author=book_author,
+        tags_summary=tags_summary,
+        sample_quotes=sample_quotes_text,
+        count=count,
+    )
+
+    response_text = generate(api_key, prompt, min_interval=min_interval)
+    items = _parse_json_array(response_text, context="video_prompts")
+
+    results: list[VideoPromptResult] = []
+    for i, item in enumerate(items):
+        if isinstance(item, dict) and "prompt" in item:
+            results.append(
+                VideoPromptResult(
+                    prompt=item["prompt"],
+                    matching_tags=item.get("matching_tags", []),
+                )
+            )
+        else:
+            logger.warning("Video prompts: skipping malformed item at index %d: %s", i, item)
+    return results

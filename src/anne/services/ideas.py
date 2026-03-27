@@ -227,6 +227,31 @@ def get_tags_with_counts(
     return [(row[0], row[1]) for row in rows]
 
 
+def get_sample_quotes_by_tag(
+    conn: sqlite3.Connection,
+    book_id: int,
+    samples_per_tag: int = 2,
+) -> dict[str, list[str]]:
+    """Return a dict mapping each tag to a few sample reviewed_quote strings."""
+    rows = conn.execute(
+        "SELECT j.value AS tag, ideas.reviewed_quote "
+        "FROM ideas, json_each(ideas.tags) AS j "
+        "WHERE ideas.book_id = ? "
+        "AND ideas.tags IS NOT NULL AND ideas.tags != '' "
+        "AND ideas.reviewed_quote IS NOT NULL "
+        "ORDER BY j.value, ideas.id",
+        (book_id,),
+    ).fetchall()
+
+    result: dict[str, list[str]] = {}
+    for tag, quote in rows:
+        if tag not in result:
+            result[tag] = []
+        if len(result[tag]) < samples_per_tag:
+            result[tag].append(quote)
+    return result
+
+
 def count_ideas(
     conn: sqlite3.Connection,
     book_id: int | None = None,
