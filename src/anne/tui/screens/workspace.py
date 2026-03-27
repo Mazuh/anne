@@ -31,6 +31,7 @@ class BookWorkspaceScreen(Screen):
         Binding("E", "open_editor", "Editor", show=False),
         Binding("f", "filter_status", "Filter"),
         Binding("T", "filter_tag", "Tag filter"),
+        Binding("P", "publish", "Publish", show=False),
         Binding("c", "copy_field", "Copy", show=False),
         Binding("A", "action_menu", "Actions"),
         Binding("slash", "search", "Search"),
@@ -229,6 +230,40 @@ class BookWorkspaceScreen(Screen):
             with get_connection(self.app.settings.db_path) as conn:
                 update_idea(conn, idea_id, force=True, status=IdeaStatus.parsed.value)
             self.app.call_from_thread(self.notify, f"Idea {idea_id} unrejected → parsed.")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    def action_publish(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        if idea.status != IdeaStatus.ready:
+            self.notify("Only ready ideas can be published.", severity="warning")
+            return
+        from anne.tui.modals.confirm import ConfirmModal
+        text = idea.presentation_text or idea.reviewed_quote or idea.raw_quote or ""
+        preview = text[:80] + "…" if len(text) > 80 else text
+        self.app.push_screen(
+            ConfirmModal(f'Mark idea #{idea.id} as published?\n"{preview}"'),
+            callback=lambda result: self._on_publish_confirmed(idea.id, result),
+        )
+
+    def _on_publish_confirmed(self, idea_id: int, result: tuple[bool, str]) -> None:
+        confirmed, _ = result
+        if confirmed:
+            self._do_publish(idea_id)
+
+    @work(thread=True)
+    def _do_publish(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import publish_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                publish_idea(conn, idea_id)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} published!")
             self._load_ideas(select_idea_id=idea_id)
         except ValueError as e:
             self.app.call_from_thread(self.notify, str(e), severity="error")

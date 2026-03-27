@@ -597,7 +597,7 @@ def idea_caption(
 def idea_publish(
     idea_id: int = typer.Argument(help="Idea ID to mark as published"),
 ) -> None:
-    """Mark a ready idea as published."""
+    """Mark a ready idea as published (flag only, actual publishing is manual)."""
     settings = load_settings()
     with get_connection(settings.db_path) as conn:
         idea = get_idea(conn, idea_id)

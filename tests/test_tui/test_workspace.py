@@ -135,6 +135,56 @@ class TestWorkspaceMutations:
                 updated = get_idea(conn, idea.id)
             assert updated.status == IdeaStatus.rejected
 
+    async def test_publish_ignored_for_non_ready_idea(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+            assert idea.status == IdeaStatus.parsed
+
+            await pilot.press("P")
+            await pilot.pause()
+
+            # No modal should open — still on the workspace screen
+            from anne.tui.modals.confirm import ConfirmModal
+            assert not isinstance(workspace_app.screen, ConfirmModal)
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                updated = get_idea(conn, idea.id)
+            assert updated.status == IdeaStatus.parsed
+
+    async def test_publish_via_confirm_modal(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            # Advance idea to ready: parsed → triaged → reviewed → ready
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+                review_idea(conn, idea.id, "Refined quote", "Context")
+                caption_idea(conn, idea.id, "Caption text", "[]")
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("P")
+            await pilot.pause()
+
+            from anne.tui.modals.confirm import ConfirmModal
+            assert isinstance(workspace_app.screen, ConfirmModal)
+
+            confirm_btn = workspace_app.screen.query_one("#confirm-btn", Button)
+            await pilot.click(confirm_btn)
+            await wait_for_workers(workspace_app)
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                updated = get_idea(conn, idea.id)
+            assert updated.status == IdeaStatus.published
+            assert updated.published_at is not None
+
 
 class TestWorkspaceFilter:
     async def test_filter_modal_opens(self, workspace_app: WorkspaceTestApp) -> None:

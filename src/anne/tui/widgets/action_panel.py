@@ -40,6 +40,7 @@ _STATUS_ACTIONS: dict[str, str] = {
   c    copy field
 """,
     "ready": """[bold]Actions[/bold]
+  P    publish
   e    edit field
   t    edit tags
   E    open in $EDITOR
