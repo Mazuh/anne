@@ -55,11 +55,11 @@ def get_commented_ideas(conn: sqlite3.Connection, book_id: int) -> list[Idea]:
     rows = conn.execute(
         """SELECT * FROM ideas
            WHERE book_id = ?
-           AND status IN (?, ?, ?)
+           AND status IN (?, ?, ?, ?)
            AND raw_note IS NOT NULL
            AND TRIM(raw_note) != ''
            ORDER BY id""",
-        (book_id, IdeaStatus.triaged, IdeaStatus.reviewed, IdeaStatus.ready),
+        (book_id, IdeaStatus.triaged, IdeaStatus.reviewed, IdeaStatus.ready, IdeaStatus.published),
     ).fetchall()
     return [Idea(**dict(r)) for r in rows]
 
@@ -151,6 +151,19 @@ def caption_idea(
     )
     if cursor.rowcount == 0:
         raise ValueError(f"Idea not found or not in reviewed status: {idea_id}")
+    row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    return Idea(**dict(row))
+
+
+def publish_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
+    idea = get_idea(conn, idea_id)
+    if idea is None:
+        raise ValueError(f"Idea not found: {idea_id}")
+    updated = update_idea(conn, idea_id, status=IdeaStatus.published)
+    conn.execute(
+        "UPDATE ideas SET published_at = datetime('now') WHERE id = ?",
+        (idea_id,),
+    )
     row = conn.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
     return Idea(**dict(row))
 
@@ -312,7 +325,8 @@ _VALID_TRANSITIONS: dict[IdeaStatus, set[IdeaStatus]] = {
     IdeaStatus.rejected: {IdeaStatus.parsed},
     IdeaStatus.triaged: {IdeaStatus.reviewed, IdeaStatus.rejected},
     IdeaStatus.reviewed: {IdeaStatus.ready, IdeaStatus.rejected},
-    IdeaStatus.ready: set(),
+    IdeaStatus.ready: {IdeaStatus.published},
+    IdeaStatus.published: set(),
 }
 
 # Fields allowed in update_idea

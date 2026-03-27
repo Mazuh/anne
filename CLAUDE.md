@@ -42,6 +42,7 @@ uv run anne ideas parse [slug]               # parse sources into ideas
 uv run anne ideas triage [slug]              # triage parsed ideas (triage/reject)
 uv run anne ideas review [slug]             # review triaged ideas (refine quotes, add context)
 uv run anne ideas caption [slug]            # generate Instagram captions for reviewed ideas
+uv run anne ideas publish <id>              # mark a ready idea as published (with confirmation)
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
 uv run anne ideas show <id>                 # show full idea details
 uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)
@@ -79,6 +80,6 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 
 ## Pipeline stages (idea status flow)
 
-parsed → triaged → reviewed → ready
+parsed → triaged → reviewed → ready → published
        ↘ rejected (reversible)
 

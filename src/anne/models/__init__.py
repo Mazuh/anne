@@ -17,6 +17,7 @@ class IdeaStatus(StrEnum):
     rejected = "rejected"
     reviewed = "reviewed"
     ready = "ready"
+    published = "published"
 
 
 class Book(BaseModel):
@@ -50,5 +51,6 @@ class Idea(BaseModel):
     quick_context: str | None = None
     presentation_text: str | None = None
     tags: str = "[]"
+    published_at: str | None = None
     created_at: str
     updated_at: str

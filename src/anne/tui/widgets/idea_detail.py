@@ -19,6 +19,8 @@ def _render_idea(idea: Idea, book_title: str, source_path: str) -> str:
         lines.append(f"  Ref:     {_escape(idea.raw_ref)}")
     lines.append(f"  Created: {idea.created_at}")
     lines.append(f"  Updated: {idea.updated_at}")
+    if idea.published_at:
+        lines.append(f"  Published: {idea.published_at}")
     lines.append(f"  Tags:    {_format_tags(idea.tags)}")
 
     if idea.raw_quote or idea.raw_note:
@@ -56,6 +58,7 @@ def _status_color(status: str) -> str:
         "triaged": "yellow",
         "reviewed": "cyan",
         "ready": "green",
+        "published": "bright_green",
         "rejected": "red",
     }
     return colors.get(status, "white")

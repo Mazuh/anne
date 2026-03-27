@@ -9,12 +9,18 @@ from anne.cli.app import app
 from anne.config.settings import Settings
 from anne.db.connection import get_connection
 from anne.db.migrate import apply_schema
-from anne.models import SourceType
+from anne.models import IdeaStatus, SourceType
 from anne.services.books import create_book
-from anne.services.ideas import insert_ideas, review_idea
+from anne.services.ideas import (
+    caption_idea,
+    get_idea,
+    insert_ideas,
+    list_ideas_paginated,
+    review_idea,
+    triage_approve_idea,
+)
 from anne.services.sources import import_source
 from anne.services.parsers import ParsedIdea
-from anne.services.ideas import triage_approve_idea
 from anne.services.llm import RateLimitError
 import anne.services.llm as llm_module
 
@@ -754,3 +760,53 @@ def test_idea_digest_notes_multi_chunk_with_synthesis(tmp_settings: Settings):
     assert "Digest saved:" in result.output
     # 2 chunk calls + 1 synthesis call
     assert call_count == 3
+
+
+# --- ideas publish ---
+
+
+def _setup_book_with_ready_ideas(tmp_settings: Settings) -> None:
+    """Create a book with ready ideas in the DB."""
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    with get_connection(tmp_settings.db_path) as conn:
+        ideas = list_ideas_paginated(conn, status=IdeaStatus.reviewed)
+        for idea in ideas:
+            caption_idea(conn, idea.id, f"Caption for {idea.id}", '["tag1"]')
+
+
+def test_idea_publish(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "publish", "1"], input="y\n")
+    assert result.exit_code == 0
+    assert "Published idea #1" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        idea = get_idea(conn, 1)
+        assert idea.status.value == "published"
+        assert idea.published_at is not None
+
+
+def test_idea_publish_not_ready(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "publish", "1"])
+    assert result.exit_code == 1
+    assert "must be 'ready'" in result.output
+
+
+def test_idea_publish_not_found(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "publish", "999"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_publish_cancelled(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "publish", "1"], input="n\n")
+    assert result.exit_code == 1
+    with get_connection(tmp_settings.db_path) as conn:
+        idea = get_idea(conn, 1)
+        assert idea.status.value == "ready"

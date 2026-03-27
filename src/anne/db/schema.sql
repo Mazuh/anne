@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS ideas (
     quick_context TEXT,
     presentation_text TEXT,
     tags TEXT NOT NULL DEFAULT '[]',
+    published_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

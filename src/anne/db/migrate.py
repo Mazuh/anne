@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
@@ -15,7 +15,7 @@ def get_schema_version(conn: sqlite3.Connection) -> int:
         return 0
 
 
-_IDEAS_COLUMNS = (
+_IDEAS_COLUMNS_V3 = (
     "id, book_id, source_id, status, raw_quote, raw_note, raw_ref, "
     "rejection_reason, reviewed_quote, "
     "reviewed_comment, quick_context, presentation_text, tags, "
@@ -101,9 +101,14 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
-    conn.execute(f"INSERT INTO ideas_new ({_IDEAS_COLUMNS}) SELECT {_IDEAS_COLUMNS} FROM ideas")
+    conn.execute(f"INSERT INTO ideas_new ({_IDEAS_COLUMNS_V3}) SELECT {_IDEAS_COLUMNS_V3} FROM ideas")
     conn.execute("DROP TABLE ideas")
     conn.execute("ALTER TABLE ideas_new RENAME TO ideas")
+
+
+def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
+    """Add published_at column to ideas table."""
+    conn.execute("ALTER TABLE ideas ADD COLUMN published_at TEXT")
 
 
 def apply_schema(db_path: Path) -> None:
@@ -137,6 +142,13 @@ def apply_schema(db_path: Path) -> None:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)",
                 (3,),
+            )
+            conn.commit()
+        if version < 4:
+            _migrate_v3_to_v4(conn)
+            conn.execute(
+                "INSERT INTO schema_version (version) VALUES (?)",
+                (4,),
             )
             conn.commit()
     except Exception:

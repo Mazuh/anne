@@ -45,6 +45,9 @@ _STATUS_ACTIONS: dict[str, str] = {
   E    open in $EDITOR
   c    copy field
 """,
+    "published": """[bold]Actions[/bold]
+  c    copy field
+""",
     "rejected": """[bold]Actions[/bold]
   u    unreject
   c    copy field

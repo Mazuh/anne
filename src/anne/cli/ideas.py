@@ -27,6 +27,7 @@ from anne.services.ideas import (
     get_unparsed_sources,
     insert_ideas,
     list_ideas_paginated,
+    publish_idea,
     reject_idea,
     review_idea,
     update_idea,
@@ -182,6 +183,8 @@ def show(
             rprint(f"  Ref:     {idea.raw_ref}")
         rprint(f"  Created: {idea.created_at}")
         rprint(f"  Updated: {idea.updated_at}")
+        if idea.published_at:
+            rprint(f"  Published: {idea.published_at}")
 
         # Raw
         if idea.raw_quote or idea.raw_note:
@@ -588,6 +591,40 @@ def idea_caption(
 
     label = "idea" if total_captioned == 1 else "ideas"
     rprint(f"\n[bold]Total: {total_captioned} {label} captioned[/bold]")
+
+
+@ideas_app.command("publish")
+def idea_publish(
+    idea_id: int = typer.Argument(help="Idea ID to mark as published"),
+) -> None:
+    """Mark a ready idea as published."""
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        idea = get_idea(conn, idea_id)
+        if idea is None:
+            rprint(f"[red]Error:[/red] idea not found: {idea_id}")
+            raise typer.Exit(code=1)
+
+        if idea.status != IdeaStatus.ready:
+            rprint(
+                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', must be 'ready' to publish."
+            )
+            raise typer.Exit(code=1)
+
+        quote = idea.reviewed_quote or idea.raw_quote
+        comment = idea.reviewed_comment or idea.raw_note
+        rprint(f"\n[bold]Idea #{idea.id}[/bold]")
+        if quote:
+            rprint(f'  [dim]Quote:[/dim]   "{escape(quote)}"')
+        if comment:
+            rprint(f"  [dim]Comment:[/dim] {escape(comment)}")
+        rprint()
+
+        typer.confirm("Are you sure you want to publish this idea?", abort=True)
+
+        published = publish_idea(conn, idea_id)
+
+    rprint(f"[green]Published idea #{published.id}.[/green]")
 
 
 @ideas_app.command("digest-notes")
