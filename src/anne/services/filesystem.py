@@ -18,9 +18,6 @@ def create_book_dirs(books_dir: Path, slug: str) -> Path:
     (book_dir / "sources" / "kindle").mkdir(parents=True, exist_ok=True)
     (book_dir / "sources" / "essays").mkdir(parents=True, exist_ok=True)
     (book_dir / "sources" / "manual").mkdir(parents=True, exist_ok=True)
-    (book_dir / "assets" / "images").mkdir(parents=True, exist_ok=True)
-    (book_dir / "assets" / "videos").mkdir(parents=True, exist_ok=True)
-    (book_dir / "posts").mkdir(parents=True, exist_ok=True)
     return book_dir
 
 

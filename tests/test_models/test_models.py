@@ -1,6 +1,6 @@
 from anne.models import (
-    Book, Source, Idea, Asset, Post,
-    SourceType, IdeaStatus, AssetType, PostStatus,
+    Book, Source, Idea,
+    SourceType, IdeaStatus,
 )
 
 
@@ -18,18 +18,6 @@ def test_idea_status_values():
     assert IdeaStatus.rejected == "rejected"
     assert IdeaStatus.reviewed == "reviewed"
     assert IdeaStatus.ready == "ready"
-
-
-def test_asset_type_values():
-    assert AssetType.image == "image"
-    assert AssetType.video == "video"
-
-
-def test_post_status_values():
-    assert PostStatus.draft == "draft"
-    assert PostStatus.rendered == "rendered"
-    assert PostStatus.ready == "ready"
-    assert PostStatus.posted == "posted"
 
 
 def test_book_model():
@@ -56,10 +44,3 @@ def test_idea_model_defaults():
     assert idea.tags == "[]"
 
 
-def test_post_model_defaults():
-    post = Post(
-        id=1, book_id=1, idea_id=1, status=PostStatus.draft,
-        created_at="2026-01-01",
-    )
-    assert post.asset_id is None
-    assert post.publish_count == 0

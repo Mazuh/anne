@@ -59,21 +59,8 @@ def get_book_stats(conn: sqlite3.Connection, book_id: int) -> dict:
     ).fetchall()
     idea_counts = {row["status"]: row["cnt"] for row in idea_rows}
 
-    post_rows = conn.execute(
-        "SELECT status, COUNT(*) as cnt FROM posts WHERE book_id = ? GROUP BY status",
-        (book_id,),
-    ).fetchall()
-    post_counts = {row["status"]: row["cnt"] for row in post_rows}
-
-    asset_count = conn.execute(
-        "SELECT COUNT(*) FROM assets WHERE book_id = ?", (book_id,)
-    ).fetchone()[0]
-
     return {
         "sources": source_count,
         "ideas": idea_counts,
         "ideas_total": sum(idea_counts.values()),
-        "posts": post_counts,
-        "posts_total": sum(post_counts.values()),
-        "assets": asset_count,
     }

@@ -1,5 +1,4 @@
 import os
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,12 +50,6 @@ def doctor() -> None:
     else:
         rprint(f"[red]\u2717[/red] Database missing: {settings.db_path}")
         ok = False
-
-    # FFmpeg
-    if shutil.which("ffmpeg"):
-        rprint("[green]\u2713[/green] FFmpeg available")
-    else:
-        rprint("[yellow]![/yellow] FFmpeg not found (needed for media generation)")
 
     # Books directory
     if settings.books_dir.exists():

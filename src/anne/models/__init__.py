@@ -19,18 +19,6 @@ class IdeaStatus(StrEnum):
     ready = "ready"
 
 
-class AssetType(StrEnum):
-    image = "image"
-    video = "video"
-
-
-class PostStatus(StrEnum):
-    draft = "draft"
-    rendered = "rendered"
-    ready = "ready"
-    posted = "posted"
-
-
 class Book(BaseModel):
     id: int
     slug: str
@@ -64,28 +52,3 @@ class Idea(BaseModel):
     tags: str = "[]"
     created_at: str
     updated_at: str
-
-
-class Asset(BaseModel):
-    id: int
-    book_id: int
-    path: str
-    type: AssetType
-    tags: str = "[]"
-    created_at: str
-
-
-class Post(BaseModel):
-    id: int
-    book_id: int
-    idea_id: int
-    asset_id: int | None = None
-    status: PostStatus
-    caption_text: str | None = None
-    output_folder: str | None = None
-    media_path: str | None = None
-    created_at: str
-    ready_at: str | None = None
-    posted_at: str | None = None
-    publish_count: int = 0
-    performance_notes: str | None = None

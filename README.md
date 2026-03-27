@@ -60,20 +60,6 @@ anne start o-principe    # jump into a book workspace
 
 Keybindings: `j/k` navigate, `a` triage, `x` reject, `u` unreject, `e` edit field, `t` edit tags, `E` open in `$EDITOR`, `f` filter by status, `/` search, `n/p` page, `q` back.
 
-## Planning
-
-From Claude using ~/Downloads/anne-technical-proposal.md as source of truth:
-
-- [x] Phase 1 — Foundation + Books + Import
-- [x] Phase 2 — Idea parsing (Kindle HTML parser, LLM-assisted essay parsing via Gemini; extract quotes/notes into Idea records)
-- [x] Phase 3 — Curation triage (triage/reject ideas via LLM, lenient first pass, configurable chunking)
-- [x] Phase 4 — Initial review + Context (LLM-assisted: reviewed_quote, reviewed_comment, quick_context, emphasis markers)
-- [x] Phase 5 — Caption generation (Instagram captions, mood/tone tags, CTA link support)
-- [ ] Phase 6 — Assets + Matching (asset registration, tag-based suggestion, manual pairing)
-- [ ] Phase 7 — Media generation (FFmpeg rendering, text overlay, image/video output, export bundles)
-- [x] Phase 8 — TUI (Textual-based terminal UI for the editorial workflow: triage, review, pairing, publishing)
-- [ ] Phase 9 — Publication tracking (posted_at, publish_count, performance_notes, repost candidates)
-
 ## License
 
 Under [MIT License](./LICENSE).

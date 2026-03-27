@@ -50,5 +50,3 @@ def test_get_book_stats(tmp_db: sqlite3.Connection):
     stats = get_book_stats(tmp_db, book.id)
     assert stats["sources"] == 0
     assert stats["ideas_total"] == 0
-    assert stats["posts_total"] == 0
-    assert stats["assets"] == 0

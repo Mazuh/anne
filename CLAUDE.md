@@ -10,7 +10,6 @@ Local-first Python CLI pipeline for turning book reading notes into Instagram-re
 
 - Python 3.14, SQLite, Typer (CLI), Rich (output), Pydantic (models), PyYAML (config)
 - Textual (TUI framework for `anne start`)
-- FFmpeg for media rendering (future phase)
 - pytest, pytest-asyncio for tests
 
 ## Project structure
@@ -19,7 +18,7 @@ Local-first Python CLI pipeline for turning book reading notes into Instagram-re
 src/anne/
   cli/          # Typer commands (bootstrap, doctor, books, sources, ideas, review)
   tui/          # Textual TUI (AnneApp, screens, widgets, modals)
-  models/       # Pydantic DTOs + StrEnums (Book, Source, Idea, Asset, Post)
+  models/       # Pydantic DTOs + StrEnums (Book, Source, Idea)
   services/     # Business logic (books, sources, ideas, parsers, llm, filesystem)
   db/           # SQLite connection, schema.sql, migrations
   config/       # Pydantic Settings, YAML config loader
@@ -67,7 +66,7 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 - Schema: `src/anne/db/schema.sql`
 - DELETE journal mode (not WAL), foreign keys enforced
 - `schema_version` table tracks migrations
-- All tables: books, sources, ideas, assets, posts
+- All tables: books, sources, ideas
 - The workspace directory may be stored on a cloud-synced folder (iCloud, Google Drive, OneDrive). Source files may not be immediately available (cloud eviction) and SQLite may face corruption risks. DELETE journal mode is used instead of WAL for this reason. See `src/anne/utils/icloud.py` for eviction handling and `anne db backup` for backup/restore support.
 
 ## Testing
@@ -83,6 +82,3 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 parsed → triaged → reviewed → ready
        ↘ rejected (reversible)
 
-## Field naming
-
-Follows the technical proposal at `~/Downloads/anne-technical-proposal.md`.

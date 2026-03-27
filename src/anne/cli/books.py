@@ -76,7 +76,6 @@ def show(slug: str = typer.Argument(help="Book slug")) -> None:
         rprint(f"  Slug:   {book.slug}")
         rprint(f"  Created: {book.created_at}")
         rprint(f"\n  Sources: {stats['sources']}")
-        rprint(f"  Assets:  {stats['assets']}")
 
         if stats["ideas"]:
             rprint("\n  Ideas by status:")
@@ -84,10 +83,3 @@ def show(slug: str = typer.Argument(help="Book slug")) -> None:
                 rprint(f"    {status}: {count}")
         else:
             rprint("  Ideas: 0")
-
-        if stats["posts"]:
-            rprint("\n  Posts by status:")
-            for status, count in sorted(stats["posts"].items()):
-                rprint(f"    {status}: {count}")
-        else:
-            rprint("  Posts: 0")

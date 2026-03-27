@@ -12,8 +12,6 @@ def test_apply_schema_creates_tables(tmp_settings):
         assert "books" in table_names
         assert "sources" in table_names
         assert "ideas" in table_names
-        assert "assets" in table_names
-        assert "posts" in table_names
         assert "schema_version" in table_names
 
 
