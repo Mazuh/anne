@@ -2,6 +2,10 @@
 
 Local-first Python CLI pipeline for turning book reading notes into Instagram-ready posts.
 
+## Platform
+
+- macOS only (TUI clipboard features use `pbcopy`)
+
 ## Tech stack
 
 - Python 3.14, SQLite, Typer (CLI), Rich (output), Pydantic (models), PyYAML (config)

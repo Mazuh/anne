@@ -23,26 +23,31 @@ _STATUS_ACTIONS: dict[str, str] = {
     "parsed": """[bold]Actions[/bold]
   a    triage
   x    reject
+  c    copy field
 """,
     "triaged": """[bold]Actions[/bold]
   e    edit field
   t    edit tags
   E    open in $EDITOR
   x    reject
+  c    copy field
 """,
     "reviewed": """[bold]Actions[/bold]
   e    edit field
   t    edit tags
   E    open in $EDITOR
   x    reject
+  c    copy field
 """,
     "ready": """[bold]Actions[/bold]
   e    edit field
   t    edit tags
   E    open in $EDITOR
+  c    copy field
 """,
     "rejected": """[bold]Actions[/bold]
   u    unreject
+  c    copy field
 """,
 }
 

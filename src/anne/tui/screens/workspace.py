@@ -31,6 +31,7 @@ class BookWorkspaceScreen(Screen):
         Binding("E", "open_editor", "Editor", show=False),
         Binding("f", "filter_status", "Filter"),
         Binding("T", "filter_tag", "Tag filter"),
+        Binding("c", "copy_field", "Copy", show=False),
         Binding("A", "action_menu", "Actions"),
         Binding("slash", "search", "Search"),
         Binding("q", "go_back", "Back"),
@@ -367,6 +368,49 @@ class BookWorkspaceScreen(Screen):
 
         if new_value != current:
             self._do_edit(idea_id, field, new_value)
+
+    # Copy field to clipboard (macOS only, uses pbcopy)
+    def action_copy_field(self) -> None:
+        import sys
+
+        if sys.platform != "darwin":
+            self.notify("Copy to clipboard requires macOS.", severity="error")
+            return
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        from anne.tui.modals.copy_field import CopyFieldModal
+        self.app.push_screen(
+            CopyFieldModal(idea),
+            callback=self._on_copy_field_selected,
+        )
+
+    def _on_copy_field_selected(self, field_name: str | None) -> None:
+        if field_name is None:
+            return
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        value = getattr(idea, field_name, "") or ""
+        if field_name == "tags":
+            import json
+
+            try:
+                tags_list = json.loads(value)
+                value = ", ".join(tags_list) if isinstance(tags_list, list) else value
+            except (json.JSONDecodeError, TypeError):
+                pass
+        try:
+            subprocess.run(
+                ["pbcopy"],
+                input=value.encode(),
+                check=True,
+            )
+            self.notify(f"Copied {field_name.replace('_', ' ')} to clipboard.")
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            self.notify("Failed to copy to clipboard.", severity="error")
 
     # Action menu (LLM pipeline per-idea)
     _LLM_ACTION_FOR_STATUS: dict[str, str] = {
