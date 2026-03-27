@@ -647,7 +647,6 @@ def idea_digest_notes(
                 book_author=book.author,
                 chunk_digests=chunk_digests,
                 content_language=settings.content_language,
-                max_input_tokens=settings.max_llm_input_tokens,
                 min_interval=settings.llm_call_interval,
             )
         else:
