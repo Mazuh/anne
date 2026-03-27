@@ -325,7 +325,7 @@ _VALID_TRANSITIONS: dict[IdeaStatus, set[IdeaStatus]] = {
     IdeaStatus.rejected: {IdeaStatus.parsed},
     IdeaStatus.triaged: {IdeaStatus.reviewed, IdeaStatus.rejected},
     IdeaStatus.reviewed: {IdeaStatus.ready, IdeaStatus.rejected},
-    IdeaStatus.ready: {IdeaStatus.published},
+    IdeaStatus.ready: {IdeaStatus.published, IdeaStatus.rejected},
     IdeaStatus.published: set(),
 }
 

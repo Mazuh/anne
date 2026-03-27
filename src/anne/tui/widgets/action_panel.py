@@ -44,6 +44,7 @@ _STATUS_ACTIONS: dict[str, str] = {
   e    edit field
   t    edit tags
   E    open in $EDITOR
+  x    reject
   c    copy field
 """,
     "published": """[bold]Actions[/bold]

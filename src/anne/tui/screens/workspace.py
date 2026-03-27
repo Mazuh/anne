@@ -181,7 +181,7 @@ class BookWorkspaceScreen(Screen):
         idea = idea_list.get_selected_idea()
         if not idea:
             return
-        allowed = {IdeaStatus.parsed, IdeaStatus.triaged, IdeaStatus.reviewed}
+        allowed = {IdeaStatus.parsed, IdeaStatus.triaged, IdeaStatus.reviewed, IdeaStatus.ready}
         if idea.status not in allowed:
             self.notify("Cannot reject from this status.", severity="warning")
             return

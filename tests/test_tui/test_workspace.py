@@ -135,6 +135,37 @@ class TestWorkspaceMutations:
                 updated = get_idea(conn, idea.id)
             assert updated.status == IdeaStatus.rejected
 
+    async def test_reject_ready_idea_via_confirm_modal(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            # Advance to ready
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+                review_idea(conn, idea.id, "refined quote", "some comment")
+                from anne.services.ideas import update_idea
+                update_idea(conn, idea.id, status="ready")
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("x")
+            await pilot.pause()
+
+            from anne.tui.modals.confirm import ConfirmModal
+            assert isinstance(workspace_app.screen, ConfirmModal)
+
+            confirm_btn = workspace_app.screen.query_one("#confirm-btn", Button)
+            await pilot.click(confirm_btn)
+            await wait_for_workers(workspace_app)
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                updated = get_idea(conn, idea.id)
+            assert updated.status == IdeaStatus.rejected
+
     async def test_publish_ignored_for_non_ready_idea(self, workspace_app: WorkspaceTestApp) -> None:
         async with workspace_app.run_test() as pilot:
             await wait_for_workers(workspace_app)
