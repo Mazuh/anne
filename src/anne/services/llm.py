@@ -753,7 +753,7 @@ def synthesize_digest_with_llm(
     book_author: str,
     chunk_digests: list[str],
     content_language: str = "pt-BR",
-    max_input_tokens: int = 7500,
+    max_input_tokens: int = 30000,
     min_interval: int = 10,
 ) -> str:
     """Merge multiple partial digests into a single thematic document. Returns markdown."""
