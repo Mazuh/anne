@@ -43,6 +43,7 @@ class BookWorkspaceScreen(Screen):
         super().__init__()
         self._book = book
         self._source_paths: dict[int, str] = {}
+        self._llm_in_progress: bool = False
 
     def on_mount(self) -> None:
         self.sub_title = self._book.title
@@ -450,6 +451,9 @@ class BookWorkspaceScreen(Screen):
 
     # AI prompt (custom LLM prompt for ready/published ideas)
     def action_ai_prompt(self) -> None:
+        if self._llm_in_progress:
+            self.notify("LLM call already in progress.", severity="warning")
+            return
         idea_list = self.query_one("#idea-list", IdeaList)
         idea = idea_list.get_selected_idea()
         if not idea:
@@ -472,6 +476,10 @@ class BookWorkspaceScreen(Screen):
 
     def _on_custom_prompt(self, idea: Idea, prompt_text: str | None) -> None:
         if prompt_text:
+            self._llm_in_progress = True
+            from anne.tui.modals.loading import LoadingModal
+
+            self.app.push_screen(LoadingModal())
             self._do_ai_prompt(idea, prompt_text)
 
     @work(thread=True)
@@ -482,11 +490,11 @@ class BookWorkspaceScreen(Screen):
         settings = self.app.settings
         api_key = settings.gemini_api_key
         if not api_key:
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
             return
 
         try:
-            self.app.call_from_thread(self.notify, "Calling LLM...")
             response = custom_prompt_idea(
                 api_key=api_key,
                 reviewed_quote=idea.reviewed_quote,
@@ -495,9 +503,18 @@ class BookWorkspaceScreen(Screen):
                 content_language=settings.content_language,
                 min_interval=settings.llm_call_interval,
             )
-            self.app.call_from_thread(self._show_prompt_response, response)
+            self.app.call_from_thread(self._dismiss_loading_and_show_response, response)
         except Exception as e:
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+
+    def _dismiss_loading(self) -> None:
+        self._llm_in_progress = False
+        self.app.pop_screen()
+
+    def _dismiss_loading_and_show_response(self, response: str) -> None:
+        self._dismiss_loading()
+        self._show_prompt_response(response)
 
     def _show_prompt_response(self, response: str) -> None:
         from anne.tui.modals.prompt_response import PromptResponseModal

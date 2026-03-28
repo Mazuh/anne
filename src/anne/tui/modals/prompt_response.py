@@ -11,6 +11,7 @@ from textual.widgets import Button, Label, Static
 class PromptResponseModal(ModalScreen[None]):
     BINDINGS = [
         Binding("escape", "close", "Close"),
+        Binding("c", "copy", "Copy", show=False),
     ]
 
     DEFAULT_CSS = """
@@ -41,6 +42,11 @@ class PromptResponseModal(ModalScreen[None]):
     PromptResponseModal Button {
         margin: 0 1;
     }
+
+    PromptResponseModal .hint {
+        color: $text-muted;
+        width: 100%;
+    }
     """
 
     def __init__(self, response: str) -> None:
@@ -56,18 +62,27 @@ class PromptResponseModal(ModalScreen[None]):
                 if sys.platform == "darwin":
                     yield Button("Copy", variant="primary", id="copy-btn")
                 yield Button("Close", variant="default", id="close-btn")
+            if sys.platform == "darwin":
+                yield Static("c to copy, Esc to close", classes="hint")
+            else:
+                yield Static("Esc to close", classes="hint")
+
+    def action_copy(self) -> None:
+        if sys.platform != "darwin":
+            return
+        try:
+            subprocess.run(
+                ["pbcopy"],
+                input=self._response.encode(),
+                check=True,
+            )
+            self.notify("Copied response to clipboard.")
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            self.notify("Failed to copy to clipboard.", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "copy-btn":
-            try:
-                subprocess.run(
-                    ["pbcopy"],
-                    input=self._response.encode(),
-                    check=True,
-                )
-                self.notify("Copied response to clipboard.")
-            except (FileNotFoundError, subprocess.CalledProcessError):
-                self.notify("Failed to copy to clipboard.", severity="error")
+            self.action_copy()
         elif event.button.id == "close-btn":
             self.dismiss(None)
 

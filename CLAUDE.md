@@ -62,6 +62,7 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 - ISO 8601 dates stored as TEXT in SQLite
 - StrEnum for status/type fields
 - Services layer between CLI and DB
+- TUI must be fully keyboard-accessible; all modals must include keyboard legend hints — users must not need to use the mouse
 
 ## Database
 
