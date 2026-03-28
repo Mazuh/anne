@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import tempfile
+from typing import TYPE_CHECKING
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -8,6 +11,10 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input
+from textual.worker import Worker
+
+if TYPE_CHECKING:
+    from anne.tui.modals.loading import LoadingModal
 
 from anne.models import Book, Idea, IdeaStatus
 from anne.tui.widgets.action_panel import ActionPanel
@@ -44,6 +51,8 @@ class BookWorkspaceScreen(Screen):
         self._book = book
         self._source_paths: dict[int, str] = {}
         self._llm_in_progress: bool = False
+        self._loading_modal: LoadingModal | None = None
+        self._ai_worker: Worker | None = None
 
     def on_mount(self) -> None:
         self.sub_title = self._book.title
@@ -479,17 +488,33 @@ class BookWorkspaceScreen(Screen):
             self._llm_in_progress = True
             from anne.tui.modals.loading import LoadingModal
 
-            self.app.push_screen(LoadingModal())
-            self._do_ai_prompt(idea, prompt_text)
+            self._loading_modal = LoadingModal()
+            self.app.push_screen(
+                self._loading_modal,
+                callback=self._on_loading_dismissed,
+            )
+            self._ai_worker = self._do_ai_prompt(idea, prompt_text)
+
+    def _on_loading_dismissed(self, completed: bool) -> None:
+        if not completed:
+            self._llm_in_progress = False
+            if self._ai_worker and not self._ai_worker.is_finished:
+                self._ai_worker.cancel()
+            self._ai_worker = None
+            self._loading_modal = None
+            self.notify("LLM call cancelled.")
 
     @work(thread=True)
     def _do_ai_prompt(self, idea: Idea, prompt_text: str) -> None:
         from anne.services.llm import custom_prompt_idea
         from anne.services.pipeline import format_llm_error
 
+        worker = self.worker
         settings = self.app.settings
         api_key = settings.gemini_api_key
         if not api_key:
+            if worker.is_cancelled:
+                return
             self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
             return
@@ -503,14 +528,24 @@ class BookWorkspaceScreen(Screen):
                 content_language=settings.content_language,
                 min_interval=settings.llm_call_interval,
             )
+            if worker.is_cancelled:
+                return
             self.app.call_from_thread(self._dismiss_loading_and_show_response, response)
         except Exception as e:
+            if worker.is_cancelled:
+                return
             self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
 
     def _dismiss_loading(self) -> None:
+        if self._loading_modal is None:
+            return
         self._llm_in_progress = False
-        self.app.pop_screen()
+        modal = self._loading_modal
+        self._loading_modal = None
+        self._ai_worker = None
+        if modal and modal.is_attached:
+            modal.dismiss(False)
 
     def _dismiss_loading_and_show_response(self, response: str) -> None:
         self._dismiss_loading()

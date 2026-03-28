@@ -8,6 +8,7 @@ from textual.widgets import Button, Label, Static, TextArea
 class CustomPromptModal(ModalScreen[str | None]):
     BINDINGS = [
         Binding("enter", "submit", "Submit", show=False, priority=True),
+        Binding("shift+enter", "newline", "Line break", show=False, priority=True),
         Binding("escape", "cancel", "Cancel"),
     ]
 
@@ -63,6 +64,10 @@ class CustomPromptModal(ModalScreen[str | None]):
 
     def action_submit(self) -> None:
         self._submit()
+
+    def action_newline(self) -> None:
+        text_area = self.query_one("#prompt-input", TextArea)
+        text_area.insert("\n")
 
     def _submit(self) -> None:
         text_area = self.query_one("#prompt-input", TextArea)

@@ -11,7 +11,11 @@ from textual.widgets import Button, Label, Static
 class PromptResponseModal(ModalScreen[None]):
     BINDINGS = [
         Binding("escape", "close", "Close"),
-        Binding("c", "copy", "Copy", show=False),
+        *(
+            [Binding("c", "copy", "Copy", show=False)]
+            if sys.platform == "darwin"
+            else []
+        ),
     ]
 
     DEFAULT_CSS = """
@@ -22,7 +26,7 @@ class PromptResponseModal(ModalScreen[None]):
     PromptResponseModal > Vertical {
         width: 90;
         height: auto;
-        max-height: 30;
+        max-height: 35;
         background: $surface;
         border: thick $primary;
         padding: 1 2;
@@ -35,7 +39,7 @@ class PromptResponseModal(ModalScreen[None]):
 
     PromptResponseModal VerticalScroll {
         height: auto;
-        max-height: 20;
+        max-height: 22;
         margin-bottom: 1;
     }
 

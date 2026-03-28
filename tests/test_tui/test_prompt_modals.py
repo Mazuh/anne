@@ -55,6 +55,7 @@ class LoadingTestApp(App):
     def __init__(self) -> None:
         super().__init__()
         self.dismissed = False
+        self.cancelled: bool | None = None
 
     def on_mount(self) -> None:
         self.push_screen(
@@ -62,8 +63,9 @@ class LoadingTestApp(App):
             callback=self._on_result,
         )
 
-    def _on_result(self, result: None) -> None:
+    def _on_result(self, result: bool) -> None:
         self.dismissed = True
+        self.cancelled = result
         self.exit()
 
 
@@ -94,6 +96,22 @@ class TestCustomPromptModal:
             await pilot.press("enter")
             await pilot.pause()
         assert app.result == "Translate to English"
+
+    async def test_shift_enter_inserts_newline(self) -> None:
+        app = PromptInputTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            from textual.widgets import TextArea
+
+            text_area = app.screen.query_one("#prompt-input", TextArea)
+            text_area.clear()
+            text_area.insert("Line one")
+            await pilot.press("shift+enter")
+            await pilot.pause()
+            # Should NOT have submitted
+            assert app.result == "NOT_SET"
+            # TextArea should contain a newline
+            assert "\n" in text_area.text
 
     async def test_enter_on_empty_does_not_submit(self) -> None:
         app = PromptInputTestApp()
@@ -203,10 +221,26 @@ class TestLoadingModal:
             texts = [str(label.render()) for label in labels]
             assert any("Calling LLM" in t for t in texts)
 
-    async def test_escape_does_not_dismiss(self) -> None:
+    async def test_escape_dismisses(self) -> None:
         app = LoadingTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("escape")
             await pilot.pause()
-            assert app.dismissed is False
+        assert app.dismissed is True
+
+    async def test_escape_returns_completed_false(self) -> None:
+        app = LoadingTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+        assert app.cancelled is False
+
+    async def test_renders_cancel_hint(self) -> None:
+        app = LoadingTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            hints = app.screen.query(".hint")
+            assert len(hints) == 1
+            assert "Esc to cancel" in str(hints[0].render())
