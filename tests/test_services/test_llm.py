@@ -5,7 +5,21 @@ import pytest
 
 import anne.services.llm as llm_module
 from anne.models import Idea, IdeaStatus
-from anne.services.llm import generate, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, digest_notes_with_llm, synthesize_digest_with_llm, ContentTooLargeError, RateLimitError, TruncatedResponseError, _parse_json_array, _repair_truncated_json_array
+from anne.services.llm import (
+    ContentTooLargeError,
+    RateLimitError,
+    TruncatedResponseError,
+    _parse_json_array,
+    _repair_truncated_json_array,
+    caption_ideas_with_llm,
+    custom_prompt_idea,
+    digest_notes_with_llm,
+    generate,
+    parse_essay_with_llm,
+    review_ideas_with_llm,
+    synthesize_digest_with_llm,
+    triage_ideas_with_llm,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -422,3 +436,32 @@ def test_synthesize_digest_with_llm_content_too_large():
     chunks = ["x" * 10000]
     with pytest.raises(ContentTooLargeError, match="Synthesis prompt too large"):
         synthesize_digest_with_llm("fake-key", "Book", "Author", chunks, max_input_tokens=100)
+
+
+# --- custom_prompt_idea tests ---
+
+
+def test_custom_prompt_idea_returns_text():
+    body = _gemini_response("Here is a reworded version of the quote.")
+    mock = _mock_urlopen(body)
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = custom_prompt_idea(
+            "fake-key", "A reviewed quote", "A caption", "Reword this more casually"
+        )
+    assert result == "Here is a reworded version of the quote."
+
+
+def test_custom_prompt_idea_includes_context_in_prompt():
+    body = _gemini_response("Response")
+    mock = _mock_urlopen(body)
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock) as mock_call:
+        custom_prompt_idea(
+            "fake-key", "My quote here", "My caption here", "Translate to English",
+            content_language="pt-BR",
+        )
+    call_data = json.loads(mock_call.call_args[0][0].data)
+    prompt_text = call_data["contents"][0]["parts"][0]["text"]
+    assert "My quote here" in prompt_text
+    assert "My caption here" in prompt_text
+    assert "Translate to English" in prompt_text
+    assert "pt-BR" in prompt_text

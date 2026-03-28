@@ -33,6 +33,7 @@ class BookWorkspaceScreen(Screen):
         Binding("T", "filter_tag", "Tag filter"),
         Binding("P", "publish", "Publish", show=False),
         Binding("c", "copy_field", "Copy", show=False),
+        Binding("question_mark", "ai_prompt", "AI prompt", show=False),
         Binding("A", "action_menu", "Actions"),
         Binding("slash", "search", "Search"),
         Binding("q", "go_back", "Back"),
@@ -446,6 +447,62 @@ class BookWorkspaceScreen(Screen):
             self.notify(f"Copied {field_name.replace('_', ' ')} to clipboard.")
         except (FileNotFoundError, subprocess.CalledProcessError):
             self.notify("Failed to copy to clipboard.", severity="error")
+
+    # AI prompt (custom LLM prompt for ready/published ideas)
+    def action_ai_prompt(self) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea = idea_list.get_selected_idea()
+        if not idea:
+            return
+        if idea.status not in (IdeaStatus.ready, IdeaStatus.published):
+            self.notify(
+                "AI prompt is only available for ready or published ideas.",
+                severity="warning",
+            )
+            return
+        if not idea.reviewed_quote or not idea.presentation_text:
+            self.notify("Idea is missing reviewed quote or caption.", severity="warning")
+            return
+        from anne.tui.modals.custom_prompt import CustomPromptModal
+
+        self.app.push_screen(
+            CustomPromptModal(),
+            callback=lambda prompt_text: self._on_custom_prompt(idea, prompt_text),
+        )
+
+    def _on_custom_prompt(self, idea: Idea, prompt_text: str | None) -> None:
+        if prompt_text:
+            self._do_ai_prompt(idea, prompt_text)
+
+    @work(thread=True)
+    def _do_ai_prompt(self, idea: Idea, prompt_text: str) -> None:
+        from anne.services.llm import custom_prompt_idea
+        from anne.services.pipeline import format_llm_error
+
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        try:
+            self.app.call_from_thread(self.notify, "Calling LLM...")
+            response = custom_prompt_idea(
+                api_key=api_key,
+                reviewed_quote=idea.reviewed_quote,
+                presentation_text=idea.presentation_text,
+                prompt_text=prompt_text,
+                content_language=settings.content_language,
+                min_interval=settings.llm_call_interval,
+            )
+            self.app.call_from_thread(self._show_prompt_response, response)
+        except Exception as e:
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+
+    def _show_prompt_response(self, response: str) -> None:
+        from anne.tui.modals.prompt_response import PromptResponseModal
+
+        self.app.push_screen(PromptResponseModal(response))
 
     # Action menu (LLM pipeline per-idea)
     _LLM_ACTION_FOR_STATUS: dict[str, str] = {

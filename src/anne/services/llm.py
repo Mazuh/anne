@@ -778,6 +778,42 @@ def synthesize_digest_with_llm(
     return _strip_markdown_fences(response_text)
 
 
+_CUSTOM_PROMPT_TEMPLATE = """\
+You are an assistant helping a reader think about a book passage and its Instagram caption.
+
+All output text MUST be in {content_language}.
+
+Here is the passage (reviewed quote):
+"{reviewed_quote}"
+
+Here is the Instagram caption already written for this passage:
+"{presentation_text}"
+
+User's prompt:
+{prompt_text}
+
+Respond directly and helpfully.
+"""
+
+
+def custom_prompt_idea(
+    api_key: str,
+    reviewed_quote: str,
+    presentation_text: str,
+    prompt_text: str,
+    content_language: str = "pt-BR",
+    min_interval: int = 10,
+) -> str:
+    """Send a custom prompt about a ready/published idea to the LLM. Returns raw text."""
+    prompt = _CUSTOM_PROMPT_TEMPLATE.format(
+        reviewed_quote=reviewed_quote,
+        presentation_text=presentation_text,
+        prompt_text=prompt_text,
+        content_language=content_language,
+    )
+    return generate(api_key, prompt, min_interval=min_interval)
+
+
 _VIDEO_PROMPTS_TEMPLATE = """\
 You are a visual creative director generating text prompts for AI video generation tools.
 

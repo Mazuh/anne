@@ -43,6 +43,7 @@ uv run anne ideas triage [slug]              # triage parsed ideas (triage/rejec
 uv run anne ideas review [slug]             # review triaged ideas (refine quotes, add context)
 uv run anne ideas caption [slug]            # generate Instagram captions for reviewed ideas
 uv run anne ideas publish <id>              # mark a ready idea as published (with confirmation)
+uv run anne ideas prompt <id> -p "..."     # send custom prompt about a ready/published idea to LLM
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
 uv run anne ideas show <id>                 # show full idea details
 uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)

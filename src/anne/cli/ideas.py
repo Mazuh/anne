@@ -33,7 +33,19 @@ from anne.services.ideas import (
     update_idea,
 )
 from anne.services.parsers import LLM_TYPES, ParsedIdea, parse_kindle_export_html, extract_html_content, parse_source
-from anne.services.llm import ContentTooLargeError, RateLimitError, TruncatedResponseError, parse_essay_with_llm, triage_ideas_with_llm, review_ideas_with_llm, caption_ideas_with_llm, digest_notes_with_llm, synthesize_digest_with_llm, generate_video_prompts
+from anne.services.llm import (
+    ContentTooLargeError,
+    RateLimitError,
+    TruncatedResponseError,
+    caption_ideas_with_llm,
+    custom_prompt_idea,
+    digest_notes_with_llm,
+    generate_video_prompts,
+    parse_essay_with_llm,
+    review_ideas_with_llm,
+    synthesize_digest_with_llm,
+    triage_ideas_with_llm,
+)
 
 ideas_app = typer.Typer(help="Browse and manage ideas.")
 console = Console()
@@ -625,6 +637,61 @@ def idea_publish(
         published = publish_idea(conn, idea_id)
 
     rprint(f"[green]Published idea #{published.id}.[/green]")
+
+
+@ideas_app.command("prompt")
+def idea_prompt(
+    idea_id: int = typer.Argument(help="Idea ID"),
+    prompt_text: str = typer.Option(..., "--prompt", "-p", help="Custom prompt/instruction for the LLM"),
+) -> None:
+    """Send a custom prompt about a ready or published idea to the LLM (one-shot, no storage)."""
+    settings = load_settings()
+    api_key = settings.gemini_api_key
+    if not api_key:
+        rprint("[red]Error:[/red] gemini_api_key is not configured.")
+        raise typer.Exit(code=1)
+
+    with get_connection(settings.db_path) as conn:
+        idea = get_idea(conn, idea_id)
+        if idea is None:
+            rprint(f"[red]Error:[/red] idea not found: {idea_id}")
+            raise typer.Exit(code=1)
+
+        if idea.status not in (IdeaStatus.ready, IdeaStatus.published):
+            rprint(
+                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', must be 'ready' or 'published'."
+            )
+            raise typer.Exit(code=1)
+
+        if not idea.reviewed_quote or not idea.presentation_text:
+            rprint(f"[red]Error:[/red] idea {idea_id} is missing reviewed_quote or caption.")
+            raise typer.Exit(code=1)
+
+    try:
+        response = custom_prompt_idea(
+            api_key=api_key,
+            reviewed_quote=idea.reviewed_quote,
+            presentation_text=idea.presentation_text,
+            prompt_text=prompt_text,
+            content_language=settings.content_language,
+            min_interval=settings.llm_call_interval,
+        )
+    except RateLimitError as e:
+        rprint("  [red]Rate limited by Gemini API.[/red]")
+        if str(e):
+            rprint(f"  [dim]{e}[/dim]")
+        rprint("  [dim]Wait a minute and run the command again.[/dim]")
+        raise typer.Exit(code=1)
+    except TimeoutError as e:
+        rprint("  [red]API request timed out.[/red]")
+        rprint(f"  [dim]{e}[/dim]")
+        rprint("  [dim]Run the command again to retry.[/dim]")
+        raise typer.Exit(code=1)
+    except (ContentTooLargeError, TruncatedResponseError) as e:
+        rprint(f"  [red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    rprint(f"\n{response}")
 
 
 @ideas_app.command("digest-notes")

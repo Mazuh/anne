@@ -462,3 +462,42 @@ class TestTagFilter:
             text = str(content.content)
             assert "Tags:" in text
             assert "philosophy" in text
+
+
+class TestAIPrompt:
+    async def test_ai_prompt_ignored_for_parsed_idea(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing ? on a parsed idea should not open any modal."""
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+            assert idea.status == IdeaStatus.parsed
+
+            await pilot.press("question_mark")
+            await pilot.pause()
+
+            from anne.tui.modals.custom_prompt import CustomPromptModal
+            assert not isinstance(workspace_app.screen, CustomPromptModal)
+
+    async def test_ai_prompt_opens_modal_for_ready_idea(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing ? on a ready idea should open the CustomPromptModal."""
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+                review_idea(conn, idea.id, "Refined quote", "Context")
+                caption_idea(conn, idea.id, "Caption text", "[]")
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("question_mark")
+            await pilot.pause()
+
+            from anne.tui.modals.custom_prompt import CustomPromptModal
+            assert isinstance(workspace_app.screen, CustomPromptModal)

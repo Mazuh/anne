@@ -41,6 +41,7 @@ _STATUS_ACTIONS: dict[str, str] = {
 """,
     "ready": """[bold]Actions[/bold]
   P    publish
+  ?    AI prompt
   e    edit field
   t    edit tags
   E    open in $EDITOR
@@ -48,6 +49,7 @@ _STATUS_ACTIONS: dict[str, str] = {
   c    copy field
 """,
     "published": """[bold]Actions[/bold]
+  ?    AI prompt
   c    copy field
 """,
     "rejected": """[bold]Actions[/bold]

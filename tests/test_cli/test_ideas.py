@@ -810,3 +810,45 @@ def test_idea_publish_cancelled(tmp_settings: Settings):
     with get_connection(tmp_settings.db_path) as conn:
         idea = get_idea(conn, 1)
         assert idea.status.value == "ready"
+
+
+# --- ideas prompt tests ---
+
+
+def test_idea_prompt_success(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=tmp_settings),
+        patch("anne.cli.ideas.custom_prompt_idea", return_value="LLM says hello"),
+    ):
+        result = runner.invoke(app, ["ideas", "prompt", "1", "-p", "Reword this"])
+    assert result.exit_code == 0
+    assert "LLM says hello" in result.output
+
+
+def test_idea_prompt_not_ready(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "prompt", "1", "-p", "Anything"])
+    assert result.exit_code == 1
+    assert "must be 'ready' or 'published'" in result.output
+
+
+def test_idea_prompt_not_found(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "prompt", "999", "-p", "Anything"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_prompt_no_api_key(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = None
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "prompt", "1", "-p", "Anything"])
+    assert result.exit_code == 1
+    assert "gemini_api_key" in result.output
