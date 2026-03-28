@@ -20,7 +20,7 @@ _COPYABLE_FIELDS: list[tuple[str, str]] = [
 
 class CopyFieldModal(ModalScreen[str | None]):
     BINDINGS = [
-        Binding("enter", "submit", "Copy", show=False),
+        Binding("enter", "submit", "Copy", show=False, priority=True),
         Binding("escape", "cancel", "Cancel"),
     ]
 
