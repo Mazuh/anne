@@ -74,11 +74,10 @@ class TestCustomPromptModal:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            from textual.widgets import TextArea
+            from textual.widgets import Input
 
-            text_area = app.screen.query_one("#prompt-input", TextArea)
-            text_area.clear()
-            text_area.insert("Reword this casually")
+            input_widget = app.screen.query_one("#prompt-input", Input)
+            input_widget.value = "Reword this casually"
             btn = app.screen.query_one("#submit-btn", Button)
             await pilot.click(btn)
             await pilot.pause()
@@ -88,30 +87,13 @@ class TestCustomPromptModal:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            from textual.widgets import TextArea
+            from textual.widgets import Input
 
-            text_area = app.screen.query_one("#prompt-input", TextArea)
-            text_area.clear()
-            text_area.insert("Translate to English")
+            input_widget = app.screen.query_one("#prompt-input", Input)
+            input_widget.value = "Translate to English"
             await pilot.press("enter")
             await pilot.pause()
         assert app.result == "Translate to English"
-
-    async def test_shift_enter_inserts_newline(self) -> None:
-        app = PromptInputTestApp()
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            from textual.widgets import TextArea
-
-            text_area = app.screen.query_one("#prompt-input", TextArea)
-            text_area.clear()
-            text_area.insert("Line one")
-            await pilot.press("shift+enter")
-            await pilot.pause()
-            # Should NOT have submitted
-            assert app.result == "NOT_SET"
-            # TextArea should contain a newline
-            assert "\n" in text_area.text
 
     async def test_enter_on_empty_does_not_submit(self) -> None:
         app = PromptInputTestApp()

@@ -11,7 +11,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input
-from textual.worker import Worker
+from textual.worker import Worker, get_current_worker
 
 if TYPE_CHECKING:
     from anne.tui.modals.loading import LoadingModal
@@ -508,8 +508,7 @@ class BookWorkspaceScreen(Screen):
     def _do_ai_prompt(self, idea: Idea, prompt_text: str) -> None:
         from anne.services.llm import custom_prompt_idea
         from anne.services.pipeline import format_llm_error
-
-        worker = self.worker
+        worker = get_current_worker()
         settings = self.app.settings
         api_key = settings.gemini_api_key
         if not api_key:
