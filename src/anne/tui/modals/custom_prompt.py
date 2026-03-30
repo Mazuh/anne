@@ -10,6 +10,10 @@ class CustomPromptModal(ModalScreen[str | None]):
         Binding("escape", "cancel", "Cancel"),
     ]
 
+    def __init__(self, initial_prompt: str = "") -> None:
+        super().__init__()
+        self._initial_prompt = initial_prompt
+
     DEFAULT_CSS = """
     CustomPromptModal {
         align: center middle;
@@ -50,7 +54,11 @@ class CustomPromptModal(ModalScreen[str | None]):
                 "[dim]Ask a question about this idea."
                 " This is read-only — nothing will be changed.[/dim]"
             )
-            yield Input(placeholder="Type your prompt here...", id="prompt-input")
+            yield Input(
+                placeholder="Type your prompt here...",
+                value=self._initial_prompt,
+                id="prompt-input",
+            )
             with Horizontal():
                 yield Button("Submit", variant="success", id="submit-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")

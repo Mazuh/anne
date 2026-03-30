@@ -53,6 +53,8 @@ class BookWorkspaceScreen(Screen):
         self._llm_in_progress: bool = False
         self._loading_modal: LoadingModal | None = None
         self._ai_worker: Worker | None = None
+        self._current_prompt_idea: Idea | None = None
+        self._current_prompt_text: str = ""
 
     def on_mount(self) -> None:
         self.sub_title = self._book.title
@@ -485,6 +487,8 @@ class BookWorkspaceScreen(Screen):
 
     def _on_custom_prompt(self, idea: Idea, prompt_text: str | None) -> None:
         if prompt_text:
+            self._current_prompt_idea = idea
+            self._current_prompt_text = prompt_text
             self._llm_in_progress = True
             from anne.tui.modals.loading import LoadingModal
 
@@ -529,7 +533,7 @@ class BookWorkspaceScreen(Screen):
             )
             if worker.is_cancelled:
                 return
-            self.app.call_from_thread(self._dismiss_loading_and_show_response, response)
+            self.app.call_from_thread(self._dismiss_loading_and_show_response, response, prompt_text)
         except Exception as e:
             if worker.is_cancelled:
                 return
@@ -546,14 +550,32 @@ class BookWorkspaceScreen(Screen):
         if modal and modal.is_attached:
             modal.dismiss(False)
 
-    def _dismiss_loading_and_show_response(self, response: str) -> None:
+    def _dismiss_loading_and_show_response(self, response: str, prompt_text: str) -> None:
         self._dismiss_loading()
-        self._show_prompt_response(response)
+        self._show_prompt_response(response, prompt_text)
 
-    def _show_prompt_response(self, response: str) -> None:
+    def _show_prompt_response(self, response: str, prompt_text: str) -> None:
         from anne.tui.modals.prompt_response import PromptResponseModal
 
-        self.app.push_screen(PromptResponseModal(response))
+        self.app.push_screen(
+            PromptResponseModal(response, prompt=prompt_text),
+            callback=self._on_prompt_response,
+        )
+
+    def _on_prompt_response(self, result: bool | None) -> None:
+        idea = self._current_prompt_idea
+        prompt = self._current_prompt_text
+        self._current_prompt_idea = None
+        self._current_prompt_text = ""
+        if result is True and idea is not None:
+            from anne.tui.modals.custom_prompt import CustomPromptModal
+
+            self.app.push_screen(
+                CustomPromptModal(initial_prompt=prompt),
+                callback=lambda prompt_text, _idea=idea: self._on_custom_prompt(
+                    _idea, prompt_text
+                ),
+            )
 
     # Action menu (LLM pipeline per-idea)
     _LLM_ACTION_FOR_STATUS: dict[str, str] = {

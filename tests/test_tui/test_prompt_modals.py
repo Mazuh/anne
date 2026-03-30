@@ -17,7 +17,8 @@ class PromptInputTestApp(App):
 
     def __init__(self) -> None:
         super().__init__()
-        self.result: str | None = "NOT_SET"
+        self._result_sentinel = True
+        self.result: str | None = None
 
     def on_mount(self) -> None:
         self.push_screen(
@@ -26,6 +27,7 @@ class PromptInputTestApp(App):
         )
 
     def _on_result(self, result: str | None) -> None:
+        self._result_sentinel = False
         self.result = result
         self.exit()
 
@@ -33,19 +35,24 @@ class PromptInputTestApp(App):
 class ResponseTestApp(App):
     CSS_PATH = _CSS_PATH
 
-    def __init__(self, response: str) -> None:
+    def __init__(self, response: str, prompt: str = "") -> None:
         super().__init__()
         self._response = response
+        self._prompt = prompt
         self.dismissed = False
+        self._result_sentinel = True
+        self.result: bool | None = None
 
     def on_mount(self) -> None:
         self.push_screen(
-            PromptResponseModal(self._response),
+            PromptResponseModal(self._response, prompt=self._prompt),
             callback=self._on_result,
         )
 
-    def _on_result(self, result: None) -> None:
+    def _on_result(self, result: bool | None) -> None:
         self.dismissed = True
+        self._result_sentinel = False
+        self.result = result
         self.exit()
 
 
@@ -101,7 +108,7 @@ class TestCustomPromptModal:
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
-            assert app.result == "NOT_SET"
+            assert app._result_sentinel is True
 
     async def test_submit_empty_shows_warning(self) -> None:
         app = PromptInputTestApp()
@@ -111,7 +118,7 @@ class TestCustomPromptModal:
             await pilot.click(btn)
             await pilot.pause()
             # Should still be on the modal (not dismissed)
-            assert app.result == "NOT_SET"
+            assert app._result_sentinel is True
 
     async def test_cancel_returns_none(self) -> None:
         app = PromptInputTestApp()
@@ -147,6 +154,34 @@ class TestCustomPromptModal:
             text = str(hints[0].render())
             assert "Enter to submit" in text
             assert "Esc to cancel" in text
+
+    async def test_initial_prompt_prefills_input(self) -> None:
+        class PrefillApp(App):
+            CSS_PATH = _CSS_PATH
+
+            def __init__(self) -> None:
+                super().__init__()
+                self._result_sentinel = True
+                self.result: str | None = None
+
+            def on_mount(self) -> None:
+                self.push_screen(
+                    CustomPromptModal(initial_prompt="old text"),
+                    callback=self._on_result,
+                )
+
+            def _on_result(self, result: str | None) -> None:
+                self._result_sentinel = False
+                self.result = result
+                self.exit()
+
+        app = PrefillApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            from textual.widgets import Input
+
+            input_widget = app.screen.query_one("#prompt-input", Input)
+            assert input_widget.value == "old text"
 
 
 class TestPromptResponseModal:
@@ -191,7 +226,50 @@ class TestPromptResponseModal:
             hints = app.screen.query(".hint")
             assert len(hints) == 1
             text = str(hints[0].render())
+            assert "r to retry" in text
             assert "Esc to close" in text
+
+    async def test_displays_prompt(self) -> None:
+        app = ResponseTestApp("The response", prompt="What does this mean?")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            prompt_label = app.screen.query_one("#prompt-label", Static)
+            assert "What does this mean?" in str(prompt_label.render())
+
+    async def test_no_prompt_label_when_empty(self) -> None:
+        app = ResponseTestApp("The response")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            results = app.screen.query("#prompt-label")
+            assert len(results) == 0
+
+    async def test_retry_button_dismisses_with_true(self) -> None:
+        app = ResponseTestApp("Some response", prompt="my prompt")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            btn = app.screen.query_one("#retry-btn", Button)
+            await pilot.click(btn)
+            await pilot.pause()
+        assert app.dismissed is True
+        assert app.result is True
+
+    async def test_r_key_triggers_retry(self) -> None:
+        app = ResponseTestApp("Some response", prompt="my prompt")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("r")
+            await pilot.pause()
+        assert app.dismissed is True
+        assert app.result is True
+
+    async def test_close_returns_none(self) -> None:
+        app = ResponseTestApp("Some response")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            btn = app.screen.query_one("#close-btn", Button)
+            await pilot.click(btn)
+            await pilot.pause()
+        assert app.result is None
 
 
 class TestLoadingModal:
