@@ -526,8 +526,8 @@ class BookWorkspaceScreen(Screen):
             response = custom_prompt_idea(
                 api_key=api_key,
                 reviewed_quote=idea.reviewed_quote,
-                presentation_text=idea.presentation_text,
                 prompt_text=prompt_text,
+                presentation_text=idea.presentation_text or "",
                 content_language=settings.content_language,
                 min_interval=settings.llm_call_interval,
             )

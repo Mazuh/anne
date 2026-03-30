@@ -1,7 +1,7 @@
 import json
 import sqlite3
 
-from anne.models import Idea, IdeaStatus, Source
+from anne.models import Idea, IdeaStatus, STABLE_STATUSES, Source
 from anne.services.parsers import ParsedIdea
 
 
@@ -72,6 +72,24 @@ def get_ideas_by_status(
         (book_id, status),
     ).fetchall()
     return [Idea(**dict(r)) for r in rows]
+
+
+def get_random_stable_idea(
+    conn: sqlite3.Connection,
+    book_id: int | None = None,
+) -> Idea | None:
+    """Pick a random idea in a stable status (reviewed, ready, published)."""
+    placeholders = ", ".join("?" for _ in STABLE_STATUSES)
+    params: list[object] = [s.value for s in STABLE_STATUSES]
+    query = f"SELECT * FROM ideas WHERE status IN ({placeholders})"
+    if book_id is not None:
+        query += " AND book_id = ?"
+        params.append(book_id)
+    query += " ORDER BY RANDOM() LIMIT 1"
+    row = conn.execute(query, params).fetchone()
+    if row is None:
+        return None
+    return Idea(**dict(row))
 
 
 def triage_approve_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:

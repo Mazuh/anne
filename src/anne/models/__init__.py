@@ -20,6 +20,13 @@ class IdeaStatus(StrEnum):
     published = "published"
 
 
+STABLE_STATUSES: frozenset[IdeaStatus] = frozenset({
+    IdeaStatus.reviewed,
+    IdeaStatus.ready,
+    IdeaStatus.published,
+})
+
+
 class Book(BaseModel):
     id: int
     slug: str

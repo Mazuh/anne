@@ -827,13 +827,13 @@ def test_idea_prompt_success(tmp_settings: Settings):
     assert "LLM says hello" in result.output
 
 
-def test_idea_prompt_not_ready(tmp_settings: Settings):
-    _setup_book_with_reviewed_ideas(tmp_settings)
+def test_idea_prompt_not_stable(tmp_settings: Settings):
+    _setup_book_with_parsed_ideas(tmp_settings)
     tmp_settings.gemini_api_key = "fake-key"
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
         result = runner.invoke(app, ["ideas", "prompt", "1", "-p", "Anything"])
     assert result.exit_code == 1
-    assert "must be 'ready' or 'published'" in result.output
+    assert "must be one of:" in result.output
 
 
 def test_idea_prompt_not_found(tmp_settings: Settings):
@@ -852,3 +852,87 @@ def test_idea_prompt_no_api_key(tmp_settings: Settings):
         result = runner.invoke(app, ["ideas", "prompt", "1", "-p", "Anything"])
     assert result.exit_code == 1
     assert "gemini_api_key" in result.output
+
+
+# --- ideas curiosity tests ---
+
+
+def test_idea_curiosity_with_id(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=tmp_settings),
+        patch("anne.cli.ideas.generate_curiosity_phrase", return_value="Did you ever wonder?"),
+    ):
+        result = runner.invoke(app, ["ideas", "curiosity", "1"])
+    assert result.exit_code == 0
+    assert "Did you ever wonder?" in result.output
+
+
+def test_idea_curiosity_random(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=tmp_settings),
+        patch("anne.cli.ideas.generate_curiosity_phrase", return_value="Why is that?"),
+    ):
+        result = runner.invoke(app, ["ideas", "curiosity"])
+    assert result.exit_code == 0
+    assert "Why is that?" in result.output
+
+
+def test_idea_curiosity_random_scoped_to_book(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with (
+        patch("anne.cli.ideas.load_settings", return_value=tmp_settings),
+        patch("anne.cli.ideas.generate_curiosity_phrase", return_value="Hmm?"),
+    ):
+        result = runner.invoke(app, ["ideas", "curiosity", "--book", "test-book"])
+    assert result.exit_code == 0
+    assert "Hmm?" in result.output
+
+
+def test_idea_curiosity_not_stable(tmp_settings: Settings):
+    _setup_book_with_parsed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "curiosity", "1"])
+    assert result.exit_code == 1
+    assert "must be one of:" in result.output
+
+
+def test_idea_curiosity_not_found(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "curiosity", "999"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_curiosity_no_api_key(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = None
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "curiosity", "1"])
+    assert result.exit_code == 1
+    assert "gemini_api_key" in result.output
+
+
+def test_idea_curiosity_no_stable_ideas(tmp_settings: Settings):
+    _setup_book_with_parsed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "curiosity"])
+    assert result.exit_code == 1
+    assert "no stable ideas found" in result.output
+
+
+def test_idea_curiosity_book_not_found(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    tmp_settings.gemini_api_key = "fake-key"
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "curiosity", "--book", "nonexistent"])
+    assert result.exit_code == 1
+    assert "book not found" in result.output

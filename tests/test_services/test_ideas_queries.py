@@ -10,6 +10,7 @@ from anne.services.ideas import (
     count_ideas,
     get_commented_ideas,
     get_idea,
+    get_random_stable_idea,
     insert_ideas,
     list_ideas_paginated,
     triage_approve_idea,
@@ -275,3 +276,34 @@ def test_update_idea_published_terminal(tmp_db: sqlite3.Connection):
     update_idea(tmp_db, ideas[0].id, status="published")
     with pytest.raises(ValueError, match="Invalid status transition"):
         update_idea(tmp_db, ideas[0].id, status="ready")
+
+
+# --- get_random_stable_idea ---
+
+
+def test_get_random_stable_idea_returns_reviewed(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 1)
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "q", "c")
+    result = get_random_stable_idea(tmp_db)
+    assert result is not None
+    assert result.id == ideas[0].id
+    assert result.status == IdeaStatus.reviewed
+
+
+def test_get_random_stable_idea_none_when_only_parsed(tmp_db: sqlite3.Connection):
+    _seed_ideas(tmp_db, 3)
+    result = get_random_stable_idea(tmp_db)
+    assert result is None
+
+
+def test_get_random_stable_idea_scoped_to_book(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 1)
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "q", "c")
+    # Another book with no stable ideas
+    book2 = create_book(tmp_db, "Other Book", "Other Author")
+    source2 = import_source(tmp_db, book2.id, SourceType.kindle_export_html, "sources/other.html", "fp2")
+    insert_ideas(tmp_db, book2.id, source2.id, [ParsedIdea(raw_quote="Parsed only")])
+    assert get_random_stable_idea(tmp_db, book_id=book.id) is not None
+    assert get_random_stable_idea(tmp_db, book_id=book2.id) is None

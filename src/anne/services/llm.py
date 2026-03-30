@@ -779,16 +779,13 @@ def synthesize_digest_with_llm(
 
 
 _CUSTOM_PROMPT_TEMPLATE = """\
-You are an assistant helping a reader think about a book passage and its Instagram caption.
+You are an assistant helping a reader think about a book passage{caption_intro}.
 
 All output text MUST be in {content_language}.
 
 Here is the passage (reviewed quote):
 "{reviewed_quote}"
-
-Here is the Instagram caption already written for this passage:
-"{presentation_text}"
-
+{caption_section}
 User's prompt:
 {prompt_text}
 
@@ -799,19 +796,68 @@ Respond directly and helpfully.
 def custom_prompt_idea(
     api_key: str,
     reviewed_quote: str,
-    presentation_text: str,
     prompt_text: str,
     content_language: str = "pt-BR",
     min_interval: int = 10,
+    presentation_text: str = "",
 ) -> str:
-    """Send a custom prompt about a ready/published idea to the LLM. Returns raw text."""
+    """Send a custom prompt about a stable idea to the LLM. Returns raw text."""
+    if presentation_text:
+        caption_intro = " and its Instagram caption"
+        caption_section = (
+            f'\nHere is the Instagram caption already written for this passage:\n'
+            f'"{presentation_text}"\n'
+        )
+    else:
+        caption_intro = ""
+        caption_section = ""
     prompt = _CUSTOM_PROMPT_TEMPLATE.format(
         reviewed_quote=reviewed_quote,
-        presentation_text=presentation_text,
+        caption_intro=caption_intro,
+        caption_section=caption_section,
         prompt_text=prompt_text,
         content_language=content_language,
     )
     return generate(api_key, prompt, min_interval=min_interval)
+
+
+_CURIOSITY_PROMPT_TEMPLATE = """\
+You are a social media copywriter. Given a book passage, generate a single short \
+curiosity-inducing phrase — most likely a question — that would make someone stop \
+scrolling and want to learn more.
+
+All output text MUST be in {content_language}.
+
+Rules:
+- Output ONLY the curiosity phrase, nothing else — no quotes, no explanation, no prefix.
+- It should intrigue, provoke thought, or challenge assumptions.
+- It must relate directly to the passage's core idea.
+- Keep it concise: one sentence, ideally ending with "?"
+- Do NOT repeat or paraphrase the passage literally.
+
+Passage:
+"{raw_quote}"
+"""
+
+
+def generate_curiosity_phrase(
+    api_key: str,
+    raw_quote: str,
+    content_language: str = "pt-BR",
+    min_interval: int = 10,
+) -> str:
+    """Generate a curiosity-inducing phrase from a raw book quote. Returns plain text."""
+    prompt = _CURIOSITY_PROMPT_TEMPLATE.format(
+        raw_quote=raw_quote,
+        content_language=content_language,
+    )
+    result = generate(api_key, prompt, min_interval=min_interval)
+    text = result.strip()
+    for open_q, close_q in [('"', '"'), ("'", "'"), ("«", "»")]:
+        if text.startswith(open_q) and text.endswith(close_q) and len(text) > 1:
+            text = text[len(open_q):-len(close_q)]
+            break
+    return text
 
 
 _VIDEO_PROMPTS_TEMPLATE = """\

@@ -12,7 +12,7 @@ from rich.table import Table
 from anne.config.settings import load_settings
 from anne.utils.icloud import ensure_available, is_icloud_evicted
 from anne.db.connection import get_connection
-from anne.models import Book, Idea, IdeaStatus, Source, SourceType
+from anne.models import Book, Idea, IdeaStatus, STABLE_STATUSES, Source, SourceType
 from anne.services.books import get_book, get_book_by_id, get_book_titles, list_books
 from anne.services.sources import get_source
 from anne.services.ideas import (
@@ -22,6 +22,7 @@ from anne.services.ideas import (
     get_commented_ideas,
     get_idea,
     get_ideas_by_status,
+    get_random_stable_idea,
     get_sample_quotes_by_tag,
     get_tags_with_counts,
     get_unparsed_sources,
@@ -40,6 +41,7 @@ from anne.services.llm import (
     caption_ideas_with_llm,
     custom_prompt_idea,
     digest_notes_with_llm,
+    generate_curiosity_phrase,
     generate_video_prompts,
     parse_essay_with_llm,
     review_ideas_with_llm,
@@ -644,7 +646,7 @@ def idea_prompt(
     idea_id: int = typer.Argument(help="Idea ID"),
     prompt_text: str = typer.Option(..., "--prompt", "-p", help="Custom prompt/instruction for the LLM"),
 ) -> None:
-    """Send a custom prompt about a ready or published idea to the LLM (one-shot, no storage)."""
+    """Send a custom prompt about a stable idea to the LLM (one-shot, no storage)."""
     settings = load_settings()
     api_key = settings.gemini_api_key
     if not api_key:
@@ -657,22 +659,92 @@ def idea_prompt(
             rprint(f"[red]Error:[/red] idea not found: {idea_id}")
             raise typer.Exit(code=1)
 
-        if idea.status not in (IdeaStatus.ready, IdeaStatus.published):
+        if idea.status not in STABLE_STATUSES:
+            stable_names = ", ".join(sorted(s.value for s in STABLE_STATUSES))
             rprint(
-                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', must be 'ready' or 'published'."
+                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', "
+                f"must be one of: {stable_names}."
             )
             raise typer.Exit(code=1)
 
-        if not idea.reviewed_quote or not idea.presentation_text:
-            rprint(f"[red]Error:[/red] idea {idea_id} is missing reviewed_quote or caption.")
+        if not idea.reviewed_quote:
+            rprint(f"[red]Error:[/red] idea {idea_id} is missing reviewed_quote.")
             raise typer.Exit(code=1)
 
     try:
         response = custom_prompt_idea(
             api_key=api_key,
             reviewed_quote=idea.reviewed_quote,
-            presentation_text=idea.presentation_text,
             prompt_text=prompt_text,
+            content_language=settings.content_language,
+            min_interval=settings.llm_call_interval,
+            presentation_text=idea.presentation_text or "",
+        )
+    except RateLimitError as e:
+        rprint("  [red]Rate limited by Gemini API.[/red]")
+        if str(e):
+            rprint(f"  [dim]{e}[/dim]")
+        rprint("  [dim]Wait a minute and run the command again.[/dim]")
+        raise typer.Exit(code=1)
+    except TimeoutError as e:
+        rprint("  [red]API request timed out.[/red]")
+        rprint(f"  [dim]{e}[/dim]")
+        rprint("  [dim]Run the command again to retry.[/dim]")
+        raise typer.Exit(code=1)
+    except (ContentTooLargeError, TruncatedResponseError) as e:
+        rprint(f"  [red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    rprint(f"\n{response}")
+
+
+@ideas_app.command("curiosity")
+def idea_curiosity(
+    idea_id: Optional[int] = typer.Argument(None, help="Idea ID (omit for random stable idea)"),
+    book_slug: Optional[str] = typer.Option(None, "--book", "-b", help="Scope random selection to a book"),
+) -> None:
+    """Generate a curiosity-inducing phrase from an idea's raw quote."""
+    settings = load_settings()
+    api_key = settings.gemini_api_key
+    if not api_key:
+        rprint("[red]Error:[/red] gemini_api_key is not configured.")
+        raise typer.Exit(code=1)
+
+    with get_connection(settings.db_path) as conn:
+        if idea_id is not None:
+            idea = get_idea(conn, idea_id)
+            if idea is None:
+                rprint(f"[red]Error:[/red] idea not found: {idea_id}")
+                raise typer.Exit(code=1)
+            if idea.status not in STABLE_STATUSES:
+                stable_names = ", ".join(sorted(s.value for s in STABLE_STATUSES))
+                rprint(
+                    f"[red]Error:[/red] idea {idea_id} is '{idea.status}', "
+                    f"must be one of: {stable_names}."
+                )
+                raise typer.Exit(code=1)
+        else:
+            book_id: int | None = None
+            if book_slug:
+                book = get_book(conn, book_slug)
+                if book is None:
+                    rprint(f"[red]Error:[/red] book not found: {book_slug}")
+                    raise typer.Exit(code=1)
+                book_id = book.id
+            idea = get_random_stable_idea(conn, book_id=book_id)
+            if idea is None:
+                scope = f" for book '{book_slug}'" if book_slug else ""
+                rprint(f"[red]Error:[/red] no stable ideas found{scope}.")
+                raise typer.Exit(code=1)
+
+        if not idea.raw_quote:
+            rprint(f"[red]Error:[/red] idea {idea.id} has no raw_quote.")
+            raise typer.Exit(code=1)
+
+    try:
+        curiosity = generate_curiosity_phrase(
+            api_key=api_key,
+            raw_quote=idea.raw_quote,
             content_language=settings.content_language,
             min_interval=settings.llm_call_interval,
         )
@@ -691,7 +763,15 @@ def idea_prompt(
         rprint(f"  [red]Error:[/red] {e}")
         raise typer.Exit(code=1)
 
-    rprint(f"\n{response}")
+    rprint(f"\n[bold]Idea #{idea.id}[/bold]\n")
+    rprint(f"{curiosity}\n")
+    rprint("[dim]---[/dim]")
+    if idea.reviewed_quote:
+        rprint(f'[dim]Reviewed quote:[/dim]   "{escape(idea.reviewed_quote)}"')
+    if idea.reviewed_comment:
+        rprint(f"[dim]Reviewed comment:[/dim] {escape(idea.reviewed_comment)}")
+    if idea.presentation_text:
+        rprint(f"[dim]Caption:[/dim]          {escape(idea.presentation_text)}")
 
 
 @ideas_app.command("digest-notes")

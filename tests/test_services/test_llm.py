@@ -15,6 +15,7 @@ from anne.services.llm import (
     custom_prompt_idea,
     digest_notes_with_llm,
     generate,
+    generate_curiosity_phrase,
     parse_essay_with_llm,
     review_ideas_with_llm,
     synthesize_digest_with_llm,
@@ -446,7 +447,8 @@ def test_custom_prompt_idea_returns_text():
     mock = _mock_urlopen(body)
     with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
         result = custom_prompt_idea(
-            "fake-key", "A reviewed quote", "A caption", "Reword this more casually"
+            "fake-key", "A reviewed quote", "Reword this more casually",
+            presentation_text="A caption",
         )
     assert result == "Here is a reworded version of the quote."
 
@@ -456,8 +458,8 @@ def test_custom_prompt_idea_includes_context_in_prompt():
     mock = _mock_urlopen(body)
     with patch("anne.services.llm.urllib.request.urlopen", return_value=mock) as mock_call:
         custom_prompt_idea(
-            "fake-key", "My quote here", "My caption here", "Translate to English",
-            content_language="pt-BR",
+            "fake-key", "My quote here", "Translate to English",
+            content_language="pt-BR", presentation_text="My caption here",
         )
     call_data = json.loads(mock_call.call_args[0][0].data)
     prompt_text = call_data["contents"][0]["parts"][0]["text"]
@@ -465,3 +467,41 @@ def test_custom_prompt_idea_includes_context_in_prompt():
     assert "My caption here" in prompt_text
     assert "Translate to English" in prompt_text
     assert "pt-BR" in prompt_text
+
+
+# --- generate_curiosity_phrase tests ---
+
+
+def test_generate_curiosity_phrase_returns_text():
+    body = _gemini_response("What if everything you knew was wrong?")
+    mock = _mock_urlopen(body)
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = generate_curiosity_phrase("fake-key", "A deep quote about knowledge")
+    assert result == "What if everything you knew was wrong?"
+
+
+def test_generate_curiosity_phrase_strips_quotes():
+    body = _gemini_response('  "What if everything you knew was wrong?"  ')
+    mock = _mock_urlopen(body)
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = generate_curiosity_phrase("fake-key", "A quote")
+    assert result == "What if everything you knew was wrong?"
+
+
+def test_generate_curiosity_phrase_strips_guillemets():
+    body = _gemini_response("«Is this really true?»")
+    mock = _mock_urlopen(body)
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock):
+        result = generate_curiosity_phrase("fake-key", "A quote")
+    assert result == "Is this really true?"
+
+
+def test_generate_curiosity_phrase_includes_quote_in_prompt():
+    body = _gemini_response("Curiosity phrase")
+    mock = _mock_urlopen(body)
+    with patch("anne.services.llm.urllib.request.urlopen", return_value=mock) as mock_call:
+        generate_curiosity_phrase("fake-key", "My raw quote here", content_language="en-US")
+    call_data = json.loads(mock_call.call_args[0][0].data)
+    prompt_text = call_data["contents"][0]["parts"][0]["text"]
+    assert "My raw quote here" in prompt_text
+    assert "en-US" in prompt_text
