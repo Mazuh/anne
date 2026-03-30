@@ -2,10 +2,10 @@
 
 ## About
 
-Pipeline CLI for converting my reading notes into short posts for social networks.
+Pipeline CLI for converting reading notes into short posts for social networks.
 
-It's not a service meant for general availability,
-it's just a personal tool to assist me in creating my non-tech content.
+This is a personal tool — designed for my own workflow, but open source in case
+it's useful as reference or inspiration.
 
 Its name is inspired in [Anne Frank](https://en.wikipedia.org/wiki/Anne_Frank).
 Her diary is one of my favorite books, I was very touched by her story
@@ -17,16 +17,12 @@ or, in any case, just to write for herself.
 Requires Python 3.14 and [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uv sync
+uv run anne bootstrap
 ```
 
 ## Usage
 
-Initialize the workspace, then follow the hint to set up a shell alias:
-
-```sh
-anne bootstrap
-```
+Follow the bootstrap hint to set up a shell alias.
 
 The examples below assume the alias is set (otherwise use `uv run anne`). Check workspace health anytime with `anne doctor`.
 

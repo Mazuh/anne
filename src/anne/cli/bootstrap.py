@@ -1,4 +1,5 @@
 import os
+import subprocess
 from pathlib import Path
 
 import typer
@@ -25,6 +26,11 @@ def _print_shell_hint() -> None:
 
 def bootstrap() -> None:
     """Initialize Anne workspace and configuration."""
+    rprint("[dim]Syncing dependencies...[/dim]")
+    result = subprocess.run(["uv", "sync", "--project", str(PROJECT_DIR)])
+    if result.returncode != 0:
+        rprint("[yellow]Warning: uv sync failed. Continuing anyway.[/yellow]")
+
     existing = load_settings()
 
     root_str = typer.prompt("Root directory for Anne workspace", default=str(existing.root_dir))

@@ -1,8 +1,10 @@
 [project]
 name = "anne"
 version = "0.1.0"
-description = "Pipeline CLI for converting my reading notes into short posts for social networks."
+description = "Pipeline CLI for converting reading notes into short posts for social networks."
 readme = "README.md"
+license = "MIT"
+authors = [{name = "Marcell G. C. da Silva"}]
 requires-python = ">=3.14"
 dependencies = [
     "typer>=0.15",
@@ -14,6 +16,9 @@ dependencies = [
 
 [project.scripts]
 anne = "anne.cli.app:app"
+
+[project.urls]
+Repository = "https://github.com/Mazuh/anne"
 
 [build-system]
 requires = ["setuptools>=75.0"]
