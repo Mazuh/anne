@@ -269,8 +269,11 @@ class BookWorkspaceScreen(Screen):
             self.app.push_screen(
                 ActionModal(
                     f"Mark idea #{idea.id}",
-                    ["Publish"],
-                    {"Publish": "Mark as published (visual only, actual publishing is manual)"},
+                    ["Publish", "Unqueue"],
+                    {
+                        "Publish": "Mark as published (visual only, actual publishing is manual)",
+                        "Unqueue": "Move back to ready status",
+                    },
                 ),
                 callback=lambda result: self._on_publish_action(idea.id, result),
             )
@@ -282,6 +285,8 @@ class BookWorkspaceScreen(Screen):
             self._do_publish(idea_id)
         elif result == "Queue":
             self._do_queue(idea_id)
+        elif result == "Unqueue":
+            self._do_unqueue(idea_id)
 
     @work(thread=True)
     def _do_publish(self, idea_id: int) -> None:
@@ -305,6 +310,19 @@ class BookWorkspaceScreen(Screen):
             with get_connection(self.app.settings.db_path) as conn:
                 queue_idea(conn, idea_id)
             self.app.call_from_thread(self.notify, f"Idea {idea_id} queued.")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    @work(thread=True)
+    def _do_unqueue(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import unqueue_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                unqueue_idea(conn, idea_id)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} moved back to ready.")
             self._load_ideas(select_idea_id=idea_id)
         except ValueError as e:
             self.app.call_from_thread(self.notify, str(e), severity="error")

@@ -18,6 +18,7 @@ from anne.services.ideas import (
     queue_idea,
     reject_idea,
     review_idea,
+    unqueue_idea,
 )
 from anne.models import IdeaStatus
 from anne.services.parsers import ParsedIdea
@@ -315,6 +316,27 @@ def test_publish_queued_idea(tmp_db: sqlite3.Connection):
     published = publish_idea(tmp_db, ideas[0].id)
     assert published.status == IdeaStatus.published
     assert published.published_at is not None
+
+
+def test_unqueue_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q1", "context")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    queue_idea(tmp_db, ideas[0].id)
+    unqueued = unqueue_idea(tmp_db, ideas[0].id)
+    assert unqueued.status == IdeaStatus.ready
+
+
+def test_unqueue_idea_not_queued(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q1", "context")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    with pytest.raises(ValueError, match="Invalid status transition"):
+        unqueue_idea(tmp_db, ideas[0].id)
 
 
 def _make_ready_idea(conn: sqlite3.Connection, book_id: int, source_id: int, quote: str, tags: str) -> None:

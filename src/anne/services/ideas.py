@@ -193,6 +193,13 @@ def queue_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
     return update_idea(conn, idea_id, status=IdeaStatus.queued)
 
 
+def unqueue_idea(conn: sqlite3.Connection, idea_id: int) -> Idea:
+    idea = get_idea(conn, idea_id)
+    if idea is None:
+        raise ValueError(f"Idea not found: {idea_id}")
+    return update_idea(conn, idea_id, status=IdeaStatus.ready)
+
+
 def reject_idea(
     conn: sqlite3.Connection, idea_id: int, rejection_reason: str | None
 ) -> Idea:
@@ -351,7 +358,7 @@ _VALID_TRANSITIONS: dict[IdeaStatus, set[IdeaStatus]] = {
     IdeaStatus.triaged: {IdeaStatus.reviewed, IdeaStatus.rejected},
     IdeaStatus.reviewed: {IdeaStatus.ready, IdeaStatus.rejected},
     IdeaStatus.ready: {IdeaStatus.published, IdeaStatus.queued, IdeaStatus.rejected},
-    IdeaStatus.queued: {IdeaStatus.published, IdeaStatus.rejected},
+    IdeaStatus.queued: {IdeaStatus.published, IdeaStatus.ready, IdeaStatus.rejected},
     IdeaStatus.published: set(),
 }
 

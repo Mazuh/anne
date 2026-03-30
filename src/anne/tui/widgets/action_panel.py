@@ -49,7 +49,7 @@ _STATUS_ACTIONS: dict[str, str] = {
   c    copy field
 """,
     "queued": """[bold]Actions[/bold]
-  P    publish
+  P    publish/unqueue
   ?    AI prompt
   e    edit field
   t    edit tags
