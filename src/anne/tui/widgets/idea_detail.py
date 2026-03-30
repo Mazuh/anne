@@ -58,6 +58,7 @@ def _status_color(status: str) -> str:
         "triaged": "yellow",
         "reviewed": "cyan",
         "ready": "green",
+        "queued": "bright_yellow",
         "published": "bright_green",
         "rejected": "red",
     }

@@ -178,14 +178,14 @@ class TestWorkspaceMutations:
             await pilot.pause()
 
             # No modal should open — still on the workspace screen
-            from anne.tui.modals.confirm import ConfirmModal
-            assert not isinstance(workspace_app.screen, ConfirmModal)
+            from anne.tui.modals.action_menu import ActionModal
+            assert not isinstance(workspace_app.screen, ActionModal)
 
             with get_connection(workspace_app.settings.db_path) as conn:
                 updated = get_idea(conn, idea.id)
             assert updated.status == IdeaStatus.parsed
 
-    async def test_publish_via_confirm_modal(self, workspace_app: WorkspaceTestApp) -> None:
+    async def test_publish_via_action_modal(self, workspace_app: WorkspaceTestApp) -> None:
         async with workspace_app.run_test() as pilot:
             await wait_for_workers(workspace_app)
             idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
@@ -204,11 +204,76 @@ class TestWorkspaceMutations:
             await pilot.press("P")
             await pilot.pause()
 
-            from anne.tui.modals.confirm import ConfirmModal
-            assert isinstance(workspace_app.screen, ConfirmModal)
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(workspace_app.screen, ActionModal)
 
-            confirm_btn = workspace_app.screen.query_one("#confirm-btn", Button)
-            await pilot.click(confirm_btn)
+            # "Publish" is preselected (first option), press Enter to confirm
+            await pilot.press("enter")
+            await wait_for_workers(workspace_app)
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                updated = get_idea(conn, idea.id)
+            assert updated.status == IdeaStatus.published
+            assert updated.published_at is not None
+
+    async def test_queue_via_action_modal(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            # Advance idea to ready
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+                review_idea(conn, idea.id, "Refined quote", "Context")
+                caption_idea(conn, idea.id, "Caption text", "[]")
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("P")
+            await pilot.pause()
+
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(workspace_app.screen, ActionModal)
+
+            # Navigate to "Queue" (second option): down moves, space selects, enter applies
+            await pilot.press("down")
+            await pilot.press("space")
+            await pilot.press("enter")
+            await wait_for_workers(workspace_app)
+
+            with get_connection(workspace_app.settings.db_path) as conn:
+                updated = get_idea(conn, idea.id)
+            assert updated.status == IdeaStatus.queued
+
+    async def test_publish_from_queued_via_action_modal(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
+            idea = idea_list.get_selected_idea()
+            assert idea is not None
+
+            # Advance idea to queued: parsed → triaged → reviewed → ready → queued
+            with get_connection(workspace_app.settings.db_path) as conn:
+                triage_approve_idea(conn, idea.id)
+                review_idea(conn, idea.id, "Refined quote", "Context")
+                caption_idea(conn, idea.id, "Caption text", "[]")
+                from anne.services.ideas import queue_idea
+                queue_idea(conn, idea.id)
+
+            await pilot.press("r")
+            await wait_for_workers(workspace_app)
+
+            await pilot.press("P")
+            await pilot.pause()
+
+            from anne.tui.modals.action_menu import ActionModal
+            assert isinstance(workspace_app.screen, ActionModal)
+
+            # Only "Publish" option available, press Enter
+            await pilot.press("enter")
             await wait_for_workers(workspace_app)
 
             with get_connection(workspace_app.settings.db_path) as conn:

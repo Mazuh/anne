@@ -194,7 +194,7 @@ class BookWorkspaceScreen(Screen):
         idea = idea_list.get_selected_idea()
         if not idea:
             return
-        allowed = {IdeaStatus.parsed, IdeaStatus.triaged, IdeaStatus.reviewed, IdeaStatus.ready}
+        allowed = {IdeaStatus.parsed, IdeaStatus.triaged, IdeaStatus.reviewed, IdeaStatus.ready, IdeaStatus.queued}
         if idea.status not in allowed:
             self.notify("Cannot reject from this status.", severity="warning")
             return
@@ -252,21 +252,36 @@ class BookWorkspaceScreen(Screen):
         idea = idea_list.get_selected_idea()
         if not idea:
             return
-        if idea.status != IdeaStatus.ready:
-            self.notify("Only ready ideas can be published.", severity="warning")
-            return
-        from anne.tui.modals.confirm import ConfirmModal
-        text = idea.presentation_text or idea.reviewed_quote or idea.raw_quote or ""
-        preview = text[:80] + "…" if len(text) > 80 else text
-        self.app.push_screen(
-            ConfirmModal(f'Mark idea #{idea.id} as published?\n"{preview}"'),
-            callback=lambda result: self._on_publish_confirmed(idea.id, result),
-        )
+        from anne.tui.modals.action_menu import ActionModal
+        if idea.status == IdeaStatus.ready:
+            self.app.push_screen(
+                ActionModal(
+                    f"Mark idea #{idea.id}",
+                    ["Publish", "Queue"],
+                    {
+                        "Publish": "Mark as published (visual only, actual publishing is manual)",
+                        "Queue": "Mark as queued for publishing (visual only, no scheduling)",
+                    },
+                ),
+                callback=lambda result: self._on_publish_action(idea.id, result),
+            )
+        elif idea.status == IdeaStatus.queued:
+            self.app.push_screen(
+                ActionModal(
+                    f"Mark idea #{idea.id}",
+                    ["Publish"],
+                    {"Publish": "Mark as published (visual only, actual publishing is manual)"},
+                ),
+                callback=lambda result: self._on_publish_action(idea.id, result),
+            )
+        else:
+            self.notify("Only ready or queued ideas can be published/queued.", severity="warning")
 
-    def _on_publish_confirmed(self, idea_id: int, result: tuple[bool, str]) -> None:
-        confirmed, _ = result
-        if confirmed:
+    def _on_publish_action(self, idea_id: int, result: str | None) -> None:
+        if result == "Publish":
             self._do_publish(idea_id)
+        elif result == "Queue":
+            self._do_queue(idea_id)
 
     @work(thread=True)
     def _do_publish(self, idea_id: int) -> None:
@@ -277,6 +292,19 @@ class BookWorkspaceScreen(Screen):
             with get_connection(self.app.settings.db_path) as conn:
                 publish_idea(conn, idea_id)
             self.app.call_from_thread(self.notify, f"Idea {idea_id} published!")
+            self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    @work(thread=True)
+    def _do_queue(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import queue_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                queue_idea(conn, idea_id)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} queued.")
             self._load_ideas(select_idea_id=idea_id)
         except ValueError as e:
             self.app.call_from_thread(self.notify, str(e), severity="error")
@@ -469,9 +497,9 @@ class BookWorkspaceScreen(Screen):
         idea = idea_list.get_selected_idea()
         if not idea:
             return
-        if idea.status not in (IdeaStatus.ready, IdeaStatus.published):
+        if idea.status not in (IdeaStatus.ready, IdeaStatus.queued, IdeaStatus.published):
             self.notify(
-                "AI prompt is only available for ready or published ideas.",
+                "AI prompt is only available for ready, queued, or published ideas.",
                 severity="warning",
             )
             return

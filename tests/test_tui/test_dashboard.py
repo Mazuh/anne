@@ -60,9 +60,9 @@ class TestDashboard:
             table = app.screen.query_one("#dashboard-table", DataTable)
             first_row_key = list(table.rows.keys())[0]
             row_data = table.get_row(first_row_key)
-            # Columns: Book, Author, Parsed, Triaged, Reviewed, Ready, Published, Rejected, Total
+            # Columns: Book, Author, Parsed, Triaged, Reviewed, Ready, Queued, Published, Rejected, Total
             assert row_data[2] == "10"  # Parsed
-            assert row_data[8] == "10"  # Total
+            assert row_data[9] == "10"  # Total
 
     async def test_dashboard_empty(self, empty_app: AnneApp) -> None:
         async with empty_app.run_test() as pilot:

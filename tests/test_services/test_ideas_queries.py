@@ -278,6 +278,48 @@ def test_update_idea_published_terminal(tmp_db: sqlite3.Connection):
         update_idea(tmp_db, ideas[0].id, status="ready")
 
 
+# --- ready → queued → published transitions ---
+
+
+def test_update_idea_ready_to_queued(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 1)
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "q", "c")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    updated = update_idea(tmp_db, ideas[0].id, status="queued")
+    assert updated.status == IdeaStatus.queued
+
+
+def test_update_idea_queued_to_published(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 1)
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "q", "c")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    update_idea(tmp_db, ideas[0].id, status="queued")
+    updated = update_idea(tmp_db, ideas[0].id, status="published")
+    assert updated.status == IdeaStatus.published
+
+
+def test_update_idea_queued_to_rejected(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 1)
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "q", "c")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    update_idea(tmp_db, ideas[0].id, status="queued")
+    updated = update_idea(tmp_db, ideas[0].id, status="rejected")
+    assert updated.status == IdeaStatus.rejected
+
+
+def test_update_idea_queued_invalid_transition(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 1)
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "q", "c")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    update_idea(tmp_db, ideas[0].id, status="queued")
+    with pytest.raises(ValueError, match="Invalid status transition"):
+        update_idea(tmp_db, ideas[0].id, status="ready")
+
+
 # --- get_random_stable_idea ---
 
 

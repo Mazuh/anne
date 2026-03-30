@@ -29,6 +29,7 @@ from anne.services.ideas import (
     insert_ideas,
     list_ideas_paginated,
     publish_idea,
+    queue_idea,
     reject_idea,
     review_idea,
     update_idea,
@@ -611,7 +612,7 @@ def idea_caption(
 def idea_publish(
     idea_id: int = typer.Argument(help="Idea ID to mark as published"),
 ) -> None:
-    """Mark a ready idea as published (flag only, actual publishing is manual)."""
+    """Mark a ready or queued idea as published (flag only, actual publishing is manual)."""
     settings = load_settings()
     with get_connection(settings.db_path) as conn:
         idea = get_idea(conn, idea_id)
@@ -619,9 +620,9 @@ def idea_publish(
             rprint(f"[red]Error:[/red] idea not found: {idea_id}")
             raise typer.Exit(code=1)
 
-        if idea.status != IdeaStatus.ready:
+        if idea.status not in (IdeaStatus.ready, IdeaStatus.queued):
             rprint(
-                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', must be 'ready' to publish."
+                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', must be 'ready' or 'queued' to publish."
             )
             raise typer.Exit(code=1)
 
@@ -639,6 +640,40 @@ def idea_publish(
         published = publish_idea(conn, idea_id)
 
     rprint(f"[green]Published idea #{published.id}.[/green]")
+
+
+@ideas_app.command("queue")
+def idea_queue(
+    idea_id: int = typer.Argument(help="Idea ID to mark as queued"),
+) -> None:
+    """Mark a ready idea as queued (visual flag only, no actual scheduling)."""
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        idea = get_idea(conn, idea_id)
+        if idea is None:
+            rprint(f"[red]Error:[/red] idea not found: {idea_id}")
+            raise typer.Exit(code=1)
+
+        if idea.status != IdeaStatus.ready:
+            rprint(
+                f"[red]Error:[/red] idea {idea_id} is '{idea.status}', must be 'ready' to queue."
+            )
+            raise typer.Exit(code=1)
+
+        quote = idea.reviewed_quote or idea.raw_quote
+        comment = idea.reviewed_comment or idea.raw_note
+        rprint(f"\n[bold]Idea #{idea.id}[/bold]")
+        if quote:
+            rprint(f'  [dim]Quote:[/dim]   "{escape(quote)}"')
+        if comment:
+            rprint(f"  [dim]Comment:[/dim] {escape(comment)}")
+        rprint()
+
+        typer.confirm("Mark this idea as queued?", abort=True)
+
+        queued = queue_idea(conn, idea_id)
+
+    rprint(f"[green]Queued idea #{queued.id}.[/green]")
 
 
 @ideas_app.command("prompt")

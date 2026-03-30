@@ -13,6 +13,7 @@ _STATUS_DESCRIPTIONS: dict[str, str] = {
     "triaged": "Approved during triage, awaiting review",
     "reviewed": "Quote refined and context added, awaiting caption",
     "ready": "Caption generated, ready for publishing",
+    "queued": "Preselected or scheduled for publishing (visual flag)",
     "published": "Published and shared",
     "rejected": "Dismissed during triage (reversible)",
 }
@@ -58,7 +59,7 @@ class FilterModal(ModalScreen[IdeaStatus | None]):
     }
     """
 
-    _OPTIONS = ["All", "parsed", "triaged", "reviewed", "ready", "published", "rejected"]
+    _OPTIONS = ["All", "parsed", "triaged", "reviewed", "ready", "queued", "published", "rejected"]
 
     def __init__(self, current_filter: IdeaStatus | None = None) -> None:
         super().__init__()

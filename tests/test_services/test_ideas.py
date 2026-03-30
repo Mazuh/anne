@@ -15,6 +15,7 @@ from anne.services.ideas import (
     list_ideas,
     list_ideas_paginated,
     publish_idea,
+    queue_idea,
     reject_idea,
     review_idea,
 )
@@ -283,6 +284,37 @@ def test_publish_idea_not_ready(tmp_db: sqlite3.Connection):
     review_idea(tmp_db, ideas[0].id, "Q1", "context")
     with pytest.raises(ValueError, match="Invalid status transition"):
         publish_idea(tmp_db, ideas[0].id)
+
+
+def test_queue_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q1", "context")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    queued = queue_idea(tmp_db, ideas[0].id)
+    assert queued.status == IdeaStatus.queued
+
+
+def test_queue_idea_not_ready(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q1", "context")
+    with pytest.raises(ValueError, match="Invalid status transition"):
+        queue_idea(tmp_db, ideas[0].id)
+
+
+def test_publish_queued_idea(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    ideas = insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Q1")])
+    triage_approve_idea(tmp_db, ideas[0].id)
+    review_idea(tmp_db, ideas[0].id, "Q1", "context")
+    caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
+    queue_idea(tmp_db, ideas[0].id)
+    published = publish_idea(tmp_db, ideas[0].id)
+    assert published.status == IdeaStatus.published
+    assert published.published_at is not None
 
 
 def _make_ready_idea(conn: sqlite3.Connection, book_id: int, source_id: int, quote: str, tags: str) -> None:

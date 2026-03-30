@@ -791,7 +791,7 @@ def test_idea_publish_not_ready(tmp_settings: Settings):
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
         result = runner.invoke(app, ["ideas", "publish", "1"])
     assert result.exit_code == 1
-    assert "must be 'ready'" in result.output
+    assert "must be 'ready' or 'queued'" in result.output
 
 
 def test_idea_publish_not_found(tmp_settings: Settings):
@@ -810,6 +810,44 @@ def test_idea_publish_cancelled(tmp_settings: Settings):
     with get_connection(tmp_settings.db_path) as conn:
         idea = get_idea(conn, 1)
         assert idea.status.value == "ready"
+
+
+# --- ideas queue tests ---
+
+
+def test_idea_queue(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "queue", "1"], input="y\n")
+    assert result.exit_code == 0
+    assert "Queued idea #1" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        idea = get_idea(conn, 1)
+        assert idea.status.value == "queued"
+
+
+def test_idea_queue_not_ready(tmp_settings: Settings):
+    _setup_book_with_reviewed_ideas(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "queue", "1"])
+    assert result.exit_code == 1
+    assert "must be 'ready'" in result.output
+
+
+def test_idea_publish_from_queued(tmp_settings: Settings):
+    _setup_book_with_ready_ideas(tmp_settings)
+    # First queue the idea
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        runner.invoke(app, ["ideas", "queue", "1"], input="y\n")
+    # Then publish the queued idea
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "publish", "1"], input="y\n")
+    assert result.exit_code == 0
+    assert "Published idea #1" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        idea = get_idea(conn, 1)
+        assert idea.status.value == "published"
+        assert idea.published_at is not None
 
 
 # --- ideas prompt tests ---

@@ -17,12 +17,14 @@ class IdeaStatus(StrEnum):
     rejected = "rejected"
     reviewed = "reviewed"
     ready = "ready"
+    queued = "queued"
     published = "published"
 
 
 STABLE_STATUSES: frozenset[IdeaStatus] = frozenset({
     IdeaStatus.reviewed,
     IdeaStatus.ready,
+    IdeaStatus.queued,
     IdeaStatus.published,
 })
 

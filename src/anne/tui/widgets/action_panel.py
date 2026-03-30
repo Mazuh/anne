@@ -40,6 +40,15 @@ _STATUS_ACTIONS: dict[str, str] = {
   c    copy field
 """,
     "ready": """[bold]Actions[/bold]
+  P    publish/queue
+  ?    AI prompt
+  e    edit field
+  t    edit tags
+  E    open in $EDITOR
+  x    reject
+  c    copy field
+""",
+    "queued": """[bold]Actions[/bold]
   P    publish
   ?    AI prompt
   e    edit field

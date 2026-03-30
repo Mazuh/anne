@@ -39,7 +39,7 @@ class DashboardScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#dashboard-table", DataTable)
-        table.add_columns("Book", "Author", "Parsed", "Triaged", "Reviewed", "Ready", "Published", "Rejected", "Total")
+        table.add_columns("Book", "Author", "Parsed", "Triaged", "Reviewed", "Ready", "Queued", "Published", "Rejected", "Total")
         self._load_data()
 
     @work(thread=True)
@@ -76,6 +76,7 @@ class DashboardScreen(Screen):
                 str(idea_counts.get(IdeaStatus.triaged, 0)),
                 str(idea_counts.get(IdeaStatus.reviewed, 0)),
                 str(idea_counts.get(IdeaStatus.ready, 0)),
+                str(idea_counts.get(IdeaStatus.queued, 0)),
                 str(idea_counts.get(IdeaStatus.published, 0)),
                 str(idea_counts.get(IdeaStatus.rejected, 0)),
                 str(stats["ideas_total"]),

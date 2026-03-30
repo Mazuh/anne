@@ -42,7 +42,8 @@ uv run anne ideas parse [slug]               # parse sources into ideas
 uv run anne ideas triage [slug]              # triage parsed ideas (triage/reject)
 uv run anne ideas review [slug]             # review triaged ideas (refine quotes, add context)
 uv run anne ideas caption [slug]            # generate Instagram captions for reviewed ideas
-uv run anne ideas publish <id>              # mark a ready idea as published (with confirmation)
+uv run anne ideas publish <id>              # mark a ready/queued idea as published (with confirmation)
+uv run anne ideas queue <id>               # mark a ready idea as queued (visual flag only)
 uv run anne ideas prompt <id> -p "..."     # send custom prompt about a stable idea to LLM
 uv run anne ideas curiosity [id] [-b slug] # generate curiosity phrase from random/specific idea
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
@@ -83,6 +84,9 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 
 ## Pipeline stages (idea status flow)
 
-parsed → triaged → reviewed → ready → published
+parsed → triaged → reviewed → ready → queued → published
+                                    ↘ published (direct)
        ↘ rejected (reversible)
+
+Note: queued and published are visual flags only — they don't trigger any actual scheduling or publishing.
 
