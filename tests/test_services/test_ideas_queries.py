@@ -317,7 +317,7 @@ def test_update_idea_queued_invalid_transition(tmp_db: sqlite3.Connection):
     caption_idea(tmp_db, ideas[0].id, "caption", '["tag"]')
     update_idea(tmp_db, ideas[0].id, status="queued")
     with pytest.raises(ValueError, match="Invalid status transition"):
-        update_idea(tmp_db, ideas[0].id, status="ready")
+        update_idea(tmp_db, ideas[0].id, status="triaged")
 
 
 # --- get_random_stable_idea ---
