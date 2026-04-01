@@ -48,8 +48,7 @@ class PromptResponseModal(ModalScreen[bool | None]):
     }
 
     PromptResponseModal VerticalScroll {
-        height: auto;
-        max-height: 22;
+        height: 1fr;
         margin-bottom: 1;
     }
 
