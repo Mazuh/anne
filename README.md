@@ -63,8 +63,6 @@ anne start o-principe    # jump into a book workspace
 
 ![Anne TUI screenshot](.github/anne_tui_screenshot.png)
 
-Keybindings: `j/k` navigate, `a` triage, `x` reject, `u` unreject, `e` edit field, `t` edit tags, `E` open in `$EDITOR`, `f` filter by status, `/` search, `n/p` page, `q` back.
-
 ### Database
 
 For pragmatic reasons, this tool uses SQLite.
@@ -89,6 +87,10 @@ a slightly increased busy timeout (so if the database is momentarily locked duri
 and an eviction check that triggers iCloud to re-download files before reading them.
 That said, data corruption is still a risk, so run backups as you wish, especially after many
 ideas went through the pipeline, to avoid having to repeat LLM-related costs.
+
+## LLM and security
+
+This tool sends your reading notes and book metadata to Google Gemini for parsing, triaging, reviewing, and captioning. While prompts include instructions to treat user content as raw data and ignore embedded directives, these are best-effort guardrails — LLMs can still be influenced by adversarial text. If an imported source (e.g., a blog post or article) contains hidden prompt injection (via HTML comments, invisible text, etc.), it could affect LLM outputs at any pipeline stage, and those outputs persist in your database for subsequent stages. This is a personal local-first tool and the MIT License applies — use it at your own risk, especially when importing content from sources you don't fully trust.
 
 ## License
 
