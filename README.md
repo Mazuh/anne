@@ -2,10 +2,11 @@
 
 ## About
 
-Pipeline CLI for converting reading notes into short posts for social networks.
+Pipeline CLI and TUI for organizing reading notes and maybe turning them into social posts,
+with LLM-assisted filtering and refinement.
 
 This is a personal tool — designed for my own workflow, but open source in case
-it's useful as reference or inspiration.
+it's useful as reference or inspiration for someone.
 
 Its name is inspired in [Anne Frank](https://en.wikipedia.org/wiki/Anne_Frank).
 Her diary is one of my favorite books, I was very touched by her story
@@ -60,6 +61,8 @@ anne start               # dashboard with all books
 anne start o-principe    # jump into a book workspace
 ```
 
+![Anne TUI screenshot](.github/anne_tui_screenshot.png)
+
 Keybindings: `j/k` navigate, `a` triage, `x` reject, `u` unreject, `e` edit field, `t` edit tags, `E` open in `$EDITOR`, `f` filter by status, `/` search, `n/p` page, `q` back.
 
 ### Database
@@ -89,6 +92,6 @@ ideas went through the pipeline, to avoid having to repeat LLM-related costs.
 
 ## License
 
-Under [MIT License](./LICENSE).
+Under [MIT License](https://github.com/Mazuh/anne/blob/main/LICENSE).
 
-Copyright (c) 2026 Marcell "Mazuh" G. C. da Silva.
+Copyright (c) 2026 Marcell "Mazuh" G. C. da Silva — [notebook.mazuh.com](https://notebook.mazuh.com)

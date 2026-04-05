@@ -24,6 +24,7 @@ class DashboardScreen(Screen):
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
         Binding("A", "action_menu", "Actions"),
+        Binding("question_mark", "about", "About"),
         Binding("q", "quit", "Quit"),
         Binding("enter", "open_book", "Open book"),
     ]
@@ -85,6 +86,10 @@ class DashboardScreen(Screen):
 
     def action_refresh(self) -> None:
         self._load_data()
+
+    def action_about(self) -> None:
+        from anne.tui.modals.about import AboutModal
+        self.app.push_screen(AboutModal())
 
     def action_quit(self) -> None:
         self.app.exit()

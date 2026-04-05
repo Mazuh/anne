@@ -1,5 +1,6 @@
 import typer
 
+from anne import APP_AUTHOR, APP_DESCRIPTION, APP_REPO
 from anne.cli.bootstrap import bootstrap
 from anne.cli.doctor import doctor
 from anne.cli import books as books_module
@@ -8,7 +9,9 @@ from anne.cli.ideas import ideas_app
 from anne.cli.db_cmd import db_app
 from anne.cli.review import start_tui
 
-app = typer.Typer(help="Anne — pipeline CLI for turning reading notes into posts.")
+app = typer.Typer(
+    help=f"Anne — {APP_DESCRIPTION}\n\nBy {APP_AUTHOR}.\nSource: {APP_REPO}",
+)
 
 app.command()(bootstrap)
 app.command()(doctor)
