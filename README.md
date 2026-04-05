@@ -29,6 +29,28 @@ The examples below assume the alias is set (otherwise use `uv run anne`). Check 
 
 ### Pipeline
 
+While I read a book, **I highlight parts of the book and add personal notes with my thoughts**.
+These can become what **the software calls an "idea"**.
+
+Each idea has a lifecycle:
+
+```
+[source] → parsed → triaged → reviewed → ready → queued → published
+                                               ↘ published
+                  ↘ rejected (at any time, it's reversible)
+```
+
+From a source (like exported Kindle notes), the CLI parses them into the database.
+Then the LLM rejects irrelevant notes during triage, adds reviewing context and translates.
+At the end there's a text ready to be posted on social networks. It's possible to
+flag ideas as queued or published, but there's no integration or automation of actual
+publishing — it'd be too creative/personal. The flags are just visual cues for organization.
+
+The whole point of this tool is not to create a factory of social content and clickbait,
+but to use **my own reading as fuel** to an organized and consistent flow of content output.
+
+Pipeline commands (use `--help` flag at any moment for more details):
+
 ```sh
 anne books add "O Príncipe" --author "Maquiavel"   # add a book
 anne sources import o-principe <file-or-url>        # import reading notes
