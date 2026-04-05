@@ -119,6 +119,90 @@ def test_list_ideas_paginated_empty_page(tmp_db: sqlite3.Connection):
     assert result == []
 
 
+# --- search (split-word matching) ---
+
+
+def test_search_single_word(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Can I have it?")])
+    result = list_ideas_paginated(tmp_db, book_id=book.id, search="can")
+    assert len(result) == 1
+
+
+def test_search_split_words_match(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Can I have it?")])
+    result = list_ideas_paginated(tmp_db, book_id=book.id, search="can it")
+    assert len(result) == 1
+
+
+def test_search_split_words_no_match(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="Can I have it?")])
+    result = list_ideas_paginated(tmp_db, book_id=book.id, search="can zebra")
+    assert len(result) == 0
+
+
+def test_search_words_across_fields(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(
+        tmp_db,
+        book.id,
+        source.id,
+        [ParsedIdea(raw_quote="The sun rises", raw_note="in the evening")],
+    )
+    result = list_ideas_paginated(tmp_db, book_id=book.id, search="sun evening")
+    assert len(result) == 1
+
+
+def test_search_empty_and_whitespace(tmp_db: sqlite3.Connection):
+    book, source, ideas = _seed_ideas(tmp_db, 3)
+    assert len(list_ideas_paginated(tmp_db, book_id=book.id, search="")) == 3
+    assert len(list_ideas_paginated(tmp_db, book_id=book.id, search="   ")) == 3
+    assert len(list_ideas_paginated(tmp_db, book_id=book.id, search=None)) == 3
+
+
+def test_search_special_chars(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="100% done")])
+    result = list_ideas_paginated(tmp_db, book_id=book.id, search="100%")
+    assert len(result) == 1
+    # "%" alone should not match everything
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote="no percent here")])
+    result = list_ideas_paginated(tmp_db, book_id=book.id, search="100%")
+    assert len(result) == 1
+
+
+def test_count_ideas_with_split_word_search(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    insert_ideas(
+        tmp_db,
+        book.id,
+        source.id,
+        [
+            ParsedIdea(raw_quote="Can I have it?"),
+            ParsedIdea(raw_quote="Something else entirely"),
+        ],
+    )
+    assert count_ideas(tmp_db, book_id=book.id, search="can it") == 1
+    assert count_ideas(tmp_db, book_id=book.id, search="can") == 1
+    assert count_ideas(tmp_db, book_id=book.id, search="something else") == 1
+    assert count_ideas(tmp_db, book_id=book.id, search="can else") == 0
+
+
+def test_search_caps_words_at_ten(tmp_db: sqlite3.Connection):
+    book, source = _add_book_and_source(tmp_db)
+    quote = "one two three four five six seven eight nine ten"
+    insert_ideas(tmp_db, book.id, source.id, [ParsedIdea(raw_quote=quote)])
+    # 11th word doesn't exist in the text, but gets dropped by the cap.
+    result = list_ideas_paginated(
+        tmp_db,
+        book_id=book.id,
+        search="one two three four five six seven eight nine ten NOMATCH",
+    )
+    assert len(result) == 1  # "NOMATCH" is the 11th word, ignored by cap
+
+
 # --- update_idea ---
 
 

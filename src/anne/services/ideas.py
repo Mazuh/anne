@@ -233,16 +233,25 @@ def _apply_tag_condition(
 def _apply_search_conditions(
     conditions: list[str], params: list[object], search: str | None
 ) -> None:
-    if search:
-        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        search_pattern = f"%{escaped}%"
-        conditions.append(
-            "(raw_quote LIKE ? ESCAPE '\\' OR raw_note LIKE ? ESCAPE '\\' "
-            "OR reviewed_quote LIKE ? ESCAPE '\\' "
-            "OR reviewed_comment LIKE ? ESCAPE '\\' "
-            "OR presentation_text LIKE ? ESCAPE '\\')"
-        )
-        params.extend([search_pattern] * 5)
+    if not search:
+        return
+    words = search.split()[:10]
+    if not words:
+        return
+    fields = [
+        "raw_quote",
+        "raw_note",
+        "reviewed_quote",
+        "reviewed_comment",
+        "presentation_text",
+    ]
+    # Each word must match at least one field (AND across words, OR across fields).
+    for word in words:
+        escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        or_clause = " OR ".join(f"{f} LIKE ? ESCAPE '\\'" for f in fields)
+        conditions.append(f"({or_clause})")
+        params.extend([pattern] * len(fields))
 
 
 def get_distinct_tags(conn: sqlite3.Connection, book_id: int) -> list[str]:
