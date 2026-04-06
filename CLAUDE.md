@@ -42,6 +42,7 @@ uv run anne ideas parse [slug]               # parse sources into ideas
 uv run anne ideas triage [slug]              # triage parsed ideas (triage/reject)
 uv run anne ideas review [slug]             # review triaged ideas (refine quotes, add context)
 uv run anne ideas caption [slug]            # generate Instagram captions for reviewed ideas
+uv run anne ideas rush <id>                # rush single idea through all remaining stages to ready
 uv run anne ideas publish <id>              # mark a ready/queued idea as published (with confirmation)
 uv run anne ideas queue <id>               # mark a ready idea as queued (visual flag only)
 uv run anne ideas prompt <id> -p "..."     # send custom prompt about a stable idea to LLM

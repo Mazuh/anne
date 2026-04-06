@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from dataclasses import dataclass, field
 
 from anne.models import Idea, IdeaStatus
 from anne.services.ideas import (
@@ -210,6 +211,86 @@ def caption_single_idea(
         content_language=content_language,
         cta_link=cta_link,
     )
+
+
+@dataclass
+class RushResult:
+    stages_completed: list[str] = field(default_factory=list)
+    final_status: str = ""
+    rejected_reason: str | None = None
+
+
+RUSH_ELIGIBLE = {IdeaStatus.parsed, IdeaStatus.triaged, IdeaStatus.reviewed}
+
+
+def rush_single_idea(
+    conn: sqlite3.Connection,
+    *,
+    api_key: str,
+    book_title: str,
+    book_author: str,
+    idea_id: int,
+    max_input_tokens: int,
+    llm_call_interval: int,
+    content_language: str,
+    quote_target_length: int,
+    cta_link: str,
+) -> RushResult:
+    """Rush a single idea through all remaining LLM stages to ready.
+
+    Chains triage → review → caption as needed based on current status.
+    Each stage commits independently, so partial progress is preserved on error.
+    Raises ValueError if the idea doesn't exist or is not in a rushable status.
+    """
+    idea = get_idea(conn, idea_id)
+    if not idea or idea.status not in RUSH_ELIGIBLE:
+        raise ValueError(
+            f"Idea {idea_id} must be in parsed, triaged, or reviewed status to rush."
+        )
+
+    result = RushResult()
+    llm_kwargs = dict(
+        api_key=api_key,
+        book_title=book_title,
+        book_author=book_author,
+        idea_id=idea_id,
+        max_input_tokens=max_input_tokens,
+        llm_call_interval=llm_call_interval,
+    )
+
+    if idea.status == IdeaStatus.parsed:
+        outcome = triage_single_idea(conn, **llm_kwargs)
+        if outcome == "rejected":
+            updated = get_idea(conn, idea_id)
+            result.stages_completed.append("rejected")
+            result.final_status = "rejected"
+            result.rejected_reason = updated.rejection_reason if updated else None
+            return result
+        result.stages_completed.append("triaged")
+
+    idea = get_idea(conn, idea_id)
+    if idea and idea.status == IdeaStatus.triaged:
+        review_single_idea(
+            conn,
+            **llm_kwargs,
+            content_language=content_language,
+            quote_target_length=quote_target_length,
+        )
+        result.stages_completed.append("reviewed")
+
+    idea = get_idea(conn, idea_id)
+    if idea and idea.status == IdeaStatus.reviewed:
+        caption_single_idea(
+            conn,
+            **llm_kwargs,
+            content_language=content_language,
+            cta_link=cta_link,
+        )
+        result.stages_completed.append("ready")
+
+    idea = get_idea(conn, idea_id)
+    result.final_status = idea.status if idea else "unknown"
+    return result
 
 
 def format_llm_error(e: Exception) -> str:

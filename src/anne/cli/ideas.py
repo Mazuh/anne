@@ -636,6 +636,77 @@ def idea_caption(
     rprint(f"\n[bold]Total: {total_captioned} {label} captioned[/bold]")
 
 
+@ideas_app.command("rush")
+def idea_rush(
+    idea_id: int = typer.Argument(help="Idea ID to rush to ready"),
+) -> None:
+    """Rush an idea through all remaining LLM pipeline stages to ready."""
+    from anne.services.pipeline import rush_single_idea
+
+    settings = load_settings()
+    api_key = settings.gemini_api_key
+    if not api_key:
+        rprint("[red]Error:[/red] gemini_api_key is not configured.")
+        raise typer.Exit(code=1)
+
+    with get_connection(settings.db_path) as conn:
+        idea = get_idea(conn, idea_id)
+        if idea is None:
+            rprint(f"[red]Error:[/red] idea not found: {idea_id}")
+            raise typer.Exit(code=1)
+
+        book = get_book_by_id(conn, idea.book_id)
+        if book is None:
+            rprint(f"[red]Error:[/red] book not found for idea {idea_id}")
+            raise typer.Exit(code=1)
+
+        rprint(f"[bold]Rushing idea {idea_id}[/bold] ({idea.status} → ready)")
+        rprint(f"  Book: {book.title}")
+
+        try:
+            result = rush_single_idea(
+                conn,
+                api_key=api_key,
+                book_title=book.title,
+                book_author=book.author,
+                idea_id=idea_id,
+                max_input_tokens=settings.max_llm_input_tokens,
+                llm_call_interval=settings.llm_call_interval,
+                content_language=settings.content_language,
+                quote_target_length=settings.review_quote_target_length,
+                cta_link=settings.cta_link,
+            )
+        except RateLimitError as e:
+            rprint("  [red]Rate limited by Gemini API.[/red] Partial progress has been saved.")
+            if str(e):
+                rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
+        except TimeoutError as e:
+            rprint("  [red]API request timed out.[/red] Partial progress has been saved.")
+            rprint(f"  [dim]{e}[/dim]")
+            rprint("  [dim]Run the command again to continue.[/dim]")
+            raise typer.Exit(code=1)
+        except (ContentTooLargeError, TruncatedResponseError) as e:
+            rprint(f"  [red]Error:[/red] {e}")
+            raise typer.Exit(code=1)
+        except ValueError as e:
+            rprint(f"  [red]Error:[/red] {e}")
+            raise typer.Exit(code=1)
+
+    for stage in result.stages_completed:
+        if stage == "rejected":
+            reason = f" — {result.rejected_reason}" if result.rejected_reason else ""
+            rprint(f"  [yellow]Rejected[/yellow]{reason}")
+        else:
+            rprint(f"  [green]{stage.capitalize()}[/green]")
+
+    if result.final_status == "rejected":
+        rprint(f"\n[bold]Idea {idea_id} was rejected during triage.[/bold]")
+    else:
+        rprint(f"\n[bold]Idea {idea_id} is now ready![/bold] ({len(result.stages_completed)} stage(s) completed)")
+
+
 @ideas_app.command("publish")
 def idea_publish(
     idea_id: int = typer.Argument(help="Idea ID to mark as published"),

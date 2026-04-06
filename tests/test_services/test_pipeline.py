@@ -8,11 +8,13 @@ from anne.services.ideas import get_idea, insert_ideas
 from anne.services.llm import ContentTooLargeError, RateLimitError, TriageDecision, ReviewResult, CaptionResult
 from anne.services.parsers import ParsedIdea
 from anne.services.pipeline import (
+    RushResult,
     caption_book_ideas,
     caption_single_idea,
     format_llm_error,
     review_book_ideas,
     review_single_idea,
+    rush_single_idea,
     triage_book_ideas,
     triage_single_idea,
 )
@@ -318,6 +320,140 @@ class TestCaptionSingleIdea:
                 content_language="pt-BR",
                 cta_link="https://example.com",
             )
+
+
+class TestRushSingleIdea:
+    _RUSH_KWARGS = dict(
+        api_key="fake-key",
+        book_title="Test Book",
+        book_author="Test Author",
+        max_input_tokens=7500,
+        llm_call_interval=0,
+        content_language="pt-BR",
+        quote_target_length=80,
+        cta_link="https://example.com",
+    )
+
+    def _mock_triage(self, decision="triage", rejection_reason=None):
+        def side_effect(**kwargs):
+            return [TriageDecision(
+                idea_id=kwargs["ideas"][0].id,
+                decision=decision,
+                rejection_reason=rejection_reason,
+            )]
+        return side_effect
+
+    def _mock_review(self):
+        def side_effect(**kwargs):
+            idea = kwargs["ideas"][0]
+            return [ReviewResult(idea_id=idea.id, reviewed_quote="Reviewed", reviewed_comment="Context")]
+        return side_effect
+
+    def _mock_caption(self):
+        def side_effect(**kwargs):
+            idea = kwargs["ideas"][0]
+            return [CaptionResult(idea_id=idea.id, presentation_text="Caption", tags=["tag"])]
+        return side_effect
+
+    def test_rush_from_parsed_to_ready(self, seeded_db):
+        conn, book = seeded_db
+
+        with (
+            patch("anne.services.pipeline.triage_ideas_with_llm", side_effect=self._mock_triage()),
+            patch("anne.services.pipeline.review_ideas_with_llm", side_effect=self._mock_review()),
+            patch("anne.services.pipeline.caption_ideas_with_llm", side_effect=self._mock_caption()),
+        ):
+            result = rush_single_idea(conn, idea_id=1, **self._RUSH_KWARGS)
+
+        assert result.final_status == "ready"
+        assert result.stages_completed == ["triaged", "reviewed", "ready"]
+        assert result.rejected_reason is None
+        idea = get_idea(conn, 1)
+        assert idea.status == IdeaStatus.ready
+        assert idea.reviewed_quote == "Reviewed"
+        assert idea.presentation_text == "Caption"
+
+    def test_rush_from_triaged_to_ready(self, seeded_db):
+        conn, book = seeded_db
+        from anne.services.ideas import triage_approve_idea
+        triage_approve_idea(conn, 1)
+        conn.commit()
+
+        with (
+            patch("anne.services.pipeline.triage_ideas_with_llm") as mock_triage,
+            patch("anne.services.pipeline.review_ideas_with_llm", side_effect=self._mock_review()),
+            patch("anne.services.pipeline.caption_ideas_with_llm", side_effect=self._mock_caption()),
+        ):
+            result = rush_single_idea(conn, idea_id=1, **self._RUSH_KWARGS)
+
+        assert result.final_status == "ready"
+        assert result.stages_completed == ["reviewed", "ready"]
+        mock_triage.assert_not_called()
+
+    def test_rush_from_reviewed_to_ready(self, seeded_db):
+        conn, book = seeded_db
+        from anne.services.ideas import triage_approve_idea, review_idea
+        triage_approve_idea(conn, 1)
+        conn.commit()
+        review_idea(conn, 1, "Reviewed", "Comment")
+        conn.commit()
+
+        with (
+            patch("anne.services.pipeline.triage_ideas_with_llm") as mock_triage,
+            patch("anne.services.pipeline.review_ideas_with_llm") as mock_review,
+            patch("anne.services.pipeline.caption_ideas_with_llm", side_effect=self._mock_caption()),
+        ):
+            result = rush_single_idea(conn, idea_id=1, **self._RUSH_KWARGS)
+
+        assert result.final_status == "ready"
+        assert result.stages_completed == ["ready"]
+        mock_triage.assert_not_called()
+        mock_review.assert_not_called()
+
+    def test_rush_stops_on_rejection(self, seeded_db):
+        conn, book = seeded_db
+
+        with (
+            patch("anne.services.pipeline.triage_ideas_with_llm", side_effect=self._mock_triage("reject", "Not relevant")),
+            patch("anne.services.pipeline.review_ideas_with_llm") as mock_review,
+            patch("anne.services.pipeline.caption_ideas_with_llm") as mock_caption,
+        ):
+            result = rush_single_idea(conn, idea_id=1, **self._RUSH_KWARGS)
+
+        assert result.final_status == "rejected"
+        assert result.stages_completed == ["rejected"]
+        assert result.rejected_reason == "Not relevant"
+        mock_review.assert_not_called()
+        mock_caption.assert_not_called()
+
+    def test_rush_raises_on_invalid_status(self, seeded_db):
+        conn, book = seeded_db
+        from anne.services.ideas import triage_approve_idea, review_idea
+        # Advance idea 1 to ready
+        triage_approve_idea(conn, 1)
+        conn.commit()
+        review_idea(conn, 1, "Q", "C")
+        conn.commit()
+        from anne.services.ideas import caption_idea
+        caption_idea(conn, 1, "Caption", '["tag"]')
+        conn.commit()
+
+        with pytest.raises(ValueError, match="must be in parsed, triaged, or reviewed"):
+            rush_single_idea(conn, idea_id=1, **self._RUSH_KWARGS)
+
+    def test_rush_partial_progress_on_error(self, seeded_db):
+        conn, book = seeded_db
+
+        with (
+            patch("anne.services.pipeline.triage_ideas_with_llm", side_effect=self._mock_triage()),
+            patch("anne.services.pipeline.review_ideas_with_llm", side_effect=RateLimitError("rate limited")),
+        ):
+            with pytest.raises(RateLimitError):
+                rush_single_idea(conn, idea_id=1, **self._RUSH_KWARGS)
+
+        # Partial progress: idea should be triaged (triage succeeded)
+        idea = get_idea(conn, 1)
+        assert idea.status == IdeaStatus.triaged
 
 
 class TestFormatLlmError:

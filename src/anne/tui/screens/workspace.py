@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from anne.tui.modals.loading import LoadingModal
 
 from anne.models import Book, Idea, IdeaStatus
+from anne.services.pipeline import RUSH_ELIGIBLE
 from anne.tui.widgets.action_panel import ActionPanel
 from anne.tui.widgets.idea_detail import IdeaDetail
 from anne.tui.widgets.idea_list import IdeaList
@@ -661,6 +662,7 @@ class BookWorkspaceScreen(Screen):
         "Triage with LLM": "Use LLM to approve or reject this idea",
         "Review with LLM": "Refine quote and add context with LLM",
         "Caption with LLM": "Generate Instagram caption with LLM",
+        "Rush to ready": "Run all remaining LLM stages to reach ready",
     }
 
     def action_action_menu(self) -> None:
@@ -669,33 +671,59 @@ class BookWorkspaceScreen(Screen):
         if not idea:
             return
 
+        options: list[str] = []
         action_label = self._LLM_ACTION_FOR_STATUS.get(idea.status)
-        if not action_label:
+        if action_label:
+            options.append(action_label)
+        if idea.status in RUSH_ELIGIBLE:
+            options.append("Rush to ready")
+
+        if not options:
             self.notify("No LLM actions available for this status.", severity="warning")
             return
 
         from anne.tui.modals.action_menu import ActionModal
         self.app.push_screen(
-            ActionModal("LLM Actions", [action_label], self._LLM_ACTION_DESCRIPTIONS),
+            ActionModal("LLM Actions", options, self._LLM_ACTION_DESCRIPTIONS),
             callback=lambda result: self._on_llm_action_selected(idea.id, result),
         )
 
     def _on_llm_action_selected(self, idea_id: int, action: str | None) -> None:
         if action == "Triage with LLM":
-            self._run_llm_triage(idea_id)
+            self._start_llm_action(self._run_llm_triage, idea_id)
         elif action == "Review with LLM":
-            self._run_llm_review(idea_id)
+            self._start_llm_action(self._run_llm_review, idea_id)
         elif action == "Caption with LLM":
-            self._run_llm_caption(idea_id)
+            self._start_llm_action(self._run_llm_caption, idea_id)
+        elif action == "Rush to ready":
+            self._start_llm_action(self._run_llm_rush, idea_id)
+
+    def _start_llm_action(self, worker_method: object, idea_id: int) -> None:
+        if self._llm_in_progress:
+            self.notify("LLM call already in progress.", severity="warning")
+            return
+        self._llm_in_progress = True
+        from anne.tui.modals.loading import LoadingModal
+
+        self._loading_modal = LoadingModal()
+        self.app.push_screen(
+            self._loading_modal,
+            callback=self._on_loading_dismissed,
+        )
+        self._ai_worker = worker_method(idea_id)
 
     @work(thread=True)
     def _run_llm_triage(self, idea_id: int) -> None:
         from anne.db.connection import get_connection
         from anne.services.pipeline import format_llm_error, triage_single_idea
 
+        worker = get_current_worker()
         settings = self.app.settings
         api_key = settings.gemini_api_key
         if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
             return
 
@@ -710,20 +738,30 @@ class BookWorkspaceScreen(Screen):
                     max_input_tokens=settings.max_llm_input_tokens,
                     llm_call_interval=settings.llm_call_interval,
                 )
-                self.app.call_from_thread(self.notify, f"Idea {idea_id} {outcome} by LLM.")
-
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} {outcome} by LLM.")
             self._load_ideas(select_idea_id=idea_id)
         except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+            self._load_ideas(select_idea_id=idea_id)
 
     @work(thread=True)
     def _run_llm_review(self, idea_id: int) -> None:
         from anne.db.connection import get_connection
         from anne.services.pipeline import format_llm_error, review_single_idea
 
+        worker = get_current_worker()
         settings = self.app.settings
         api_key = settings.gemini_api_key
         if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
             return
 
@@ -740,20 +778,30 @@ class BookWorkspaceScreen(Screen):
                     content_language=settings.content_language,
                     quote_target_length=settings.review_quote_target_length,
                 )
-                self.app.call_from_thread(self.notify, f"Idea {idea_id} reviewed by LLM.")
-
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} reviewed by LLM.")
             self._load_ideas(select_idea_id=idea_id)
         except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+            self._load_ideas(select_idea_id=idea_id)
 
     @work(thread=True)
     def _run_llm_caption(self, idea_id: int) -> None:
         from anne.db.connection import get_connection
         from anne.services.pipeline import caption_single_idea, format_llm_error
 
+        worker = get_current_worker()
         settings = self.app.settings
         api_key = settings.gemini_api_key
         if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
             return
 
@@ -770,8 +818,64 @@ class BookWorkspaceScreen(Screen):
                     content_language=settings.content_language,
                     cta_link=settings.cta_link,
                 )
-                self.app.call_from_thread(self.notify, f"Idea {idea_id} captioned by LLM.")
-
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, f"Idea {idea_id} captioned by LLM.")
             self._load_ideas(select_idea_id=idea_id)
         except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+            self._load_ideas(select_idea_id=idea_id)
+
+    @work(thread=True)
+    def _run_llm_rush(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.pipeline import format_llm_error, rush_single_idea
+
+        worker = get_current_worker()
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        try:
+            with get_connection(settings.db_path) as conn:
+                result = rush_single_idea(
+                    conn,
+                    api_key=api_key,
+                    book_title=self._book.title,
+                    book_author=self._book.author,
+                    idea_id=idea_id,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    llm_call_interval=settings.llm_call_interval,
+                    content_language=settings.content_language,
+                    quote_target_length=settings.review_quote_target_length,
+                    cta_link=settings.cta_link,
+                )
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            if result.final_status == "rejected":
+                msg = f"Idea {idea_id} was rejected during triage."
+                if result.rejected_reason:
+                    msg += f" Reason: {result.rejected_reason}"
+                self.app.call_from_thread(self.notify, msg, severity="warning")
+            else:
+                stages = " → ".join(result.stages_completed)
+                self.app.call_from_thread(
+                    self.notify, f"Idea {idea_id} rushed to ready ({stages})"
+                )
+            self._load_ideas(select_idea_id=idea_id)
+        except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+            self._load_ideas(select_idea_id=idea_id)
