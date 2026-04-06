@@ -238,6 +238,7 @@ def edit(
     status: Optional[IdeaStatus] = typer.Option(None, help="New status"),
     raw_quote: Optional[str] = typer.Option(None, help="Update raw_quote"),
     raw_note: Optional[str] = typer.Option(None, help="Update raw_note"),
+    ref: Optional[str] = typer.Option(None, "--ref", help="Update raw_ref (page, chapter, etc.)"),
     reviewed_quote: Optional[str] = typer.Option(None, help="Update reviewed_quote"),
     reviewed_comment: Optional[str] = typer.Option(None, help="Update reviewed_comment"),
     presentation_text: Optional[str] = typer.Option(None, help="Update presentation_text"),
@@ -253,6 +254,8 @@ def edit(
         fields["raw_quote"] = raw_quote
     if raw_note is not None:
         fields["raw_note"] = raw_note
+    if ref is not None:
+        fields["raw_ref"] = ref
     if reviewed_quote is not None:
         fields["reviewed_quote"] = reviewed_quote
     if reviewed_comment is not None:

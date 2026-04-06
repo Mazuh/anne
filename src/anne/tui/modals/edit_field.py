@@ -9,6 +9,7 @@ from anne.models import Idea
 _EDITABLE_FIELDS = [
     "raw_quote",
     "raw_note",
+    "raw_ref",
     "reviewed_quote",
     "reviewed_comment",
     "presentation_text",

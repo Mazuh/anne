@@ -399,6 +399,7 @@ _UPDATABLE_FIELDS: set[str] = {
     "status",
     "raw_quote",
     "raw_note",
+    "raw_ref",
     "reviewed_quote",
     "reviewed_comment",
     "presentation_text",

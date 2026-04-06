@@ -188,6 +188,18 @@ def test_ideas_edit_raw_quote(tmp_settings: Settings):
         assert row["raw_quote"] == "New quote"
 
 
+def test_ideas_edit_ref(tmp_settings: Settings):
+    ids = _setup_ideas(tmp_settings, 1)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "edit", str(ids[0]), "--ref", "p. 42"])
+    assert result.exit_code == 0
+    assert "Updated" in result.output
+
+    with get_connection(tmp_settings.db_path) as conn:
+        row = conn.execute("SELECT raw_ref FROM ideas WHERE id = ?", (ids[0],)).fetchone()
+        assert row["raw_ref"] == "p. 42"
+
+
 def test_ideas_edit_status_valid(tmp_settings: Settings):
     ids = _setup_ideas(tmp_settings, 1)
     with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
