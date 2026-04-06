@@ -3,6 +3,29 @@ import sqlite3
 
 from anne.models import Idea, IdeaStatus, STABLE_STATUSES, Source
 from anne.services.parsers import ParsedIdea
+from anne.services.sources import get_or_create_manual_source
+
+
+def insert_manual_idea(
+    conn: sqlite3.Connection,
+    book_id: int,
+    raw_quote: str | None = None,
+    raw_note: str | None = None,
+    raw_ref: str | None = None,
+) -> Idea:
+    if not (raw_quote and raw_quote.strip()) and not (raw_note and raw_note.strip()):
+        raise ValueError("At least one of raw_quote or raw_note must be provided")
+
+    source = get_or_create_manual_source(conn, book_id)
+    conn.execute(
+        """INSERT INTO ideas (book_id, source_id, status, raw_quote, raw_note, raw_ref)
+           VALUES (?, ?, 'triaged', ?, ?, ?)""",
+        (book_id, source.id, raw_quote, raw_note, raw_ref),
+    )
+    row = conn.execute(
+        "SELECT * FROM ideas WHERE id = last_insert_rowid()"
+    ).fetchone()
+    return Idea(**dict(row))
 
 
 def is_source_parsed(conn: sqlite3.Connection, source_id: int) -> bool:

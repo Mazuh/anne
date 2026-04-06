@@ -566,3 +566,25 @@ class TestAIPrompt:
 
             from anne.tui.modals.custom_prompt import CustomPromptModal
             assert isinstance(workspace_app.screen, CustomPromptModal)
+
+
+
+class TestAddIdea:
+    async def test_add_idea_modal_opens(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            await pilot.press("I")
+            await pilot.pause()
+            from anne.tui.modals.add_idea import AddIdeaModal
+            assert isinstance(workspace_app.screen, AddIdeaModal)
+
+    async def test_add_idea_modal_cancel(self, workspace_app: WorkspaceTestApp) -> None:
+        async with workspace_app.run_test() as pilot:
+            await wait_for_workers(workspace_app)
+            await pilot.press("I")
+            await pilot.pause()
+            from anne.tui.modals.add_idea import AddIdeaModal
+            assert isinstance(workspace_app.screen, AddIdeaModal)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not isinstance(workspace_app.screen, AddIdeaModal)

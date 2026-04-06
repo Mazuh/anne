@@ -16,6 +16,7 @@ _COMMON_KEYS = """
   /    search
 
 [bold]Pipeline[/bold]
+  I    add idea
   A    LLM actions
 """
 

@@ -11,6 +11,7 @@ from anne.services.ideas import (
     get_ideas_by_status,
     get_unparsed_sources,
     insert_ideas,
+    insert_manual_idea,
     is_source_parsed,
     list_ideas,
     list_ideas_paginated,
@@ -405,3 +406,58 @@ def test_tag_filter_combined_with_status(tmp_db: sqlite3.Connection):
     assert count_ideas(tmp_db, book_id=book.id, status=IdeaStatus.ready, tag="philosophy") == 1
     # Filter by tag + status=parsed — should find nothing
     assert count_ideas(tmp_db, book_id=book.id, status=IdeaStatus.parsed, tag="philosophy") == 0
+
+
+def test_insert_manual_idea_quote_only(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    idea = insert_manual_idea(tmp_db, book.id, raw_quote="A manual quote")
+    assert idea.status == IdeaStatus.triaged
+    assert idea.raw_quote == "A manual quote"
+    assert idea.raw_note is None
+    assert idea.raw_ref is None
+
+
+def test_insert_manual_idea_note_only(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    idea = insert_manual_idea(tmp_db, book.id, raw_note="A manual note")
+    assert idea.status == IdeaStatus.triaged
+    assert idea.raw_quote is None
+    assert idea.raw_note == "A manual note"
+
+
+def test_insert_manual_idea_both_with_ref(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    idea = insert_manual_idea(tmp_db, book.id, raw_quote="Quote", raw_note="Note", raw_ref="Chapter 3, p. 42")
+    assert idea.raw_quote == "Quote"
+    assert idea.raw_note == "Note"
+    assert idea.raw_ref == "Chapter 3, p. 42"
+    assert idea.status == IdeaStatus.triaged
+
+
+def test_insert_manual_idea_neither_raises(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    with pytest.raises(ValueError, match="At least one of raw_quote or raw_note"):
+        insert_manual_idea(tmp_db, book.id)
+
+
+def test_insert_manual_idea_empty_strings_raises(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    with pytest.raises(ValueError, match="At least one of raw_quote or raw_note"):
+        insert_manual_idea(tmp_db, book.id, raw_quote="", raw_note="  ")
+
+
+def test_insert_manual_idea_creates_source(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    idea = insert_manual_idea(tmp_db, book.id, raw_quote="Q")
+    from anne.services.sources import get_source
+    source = get_source(tmp_db, idea.source_id)
+    assert source is not None
+    assert source.type == SourceType.manual_notes
+    assert source.path == "_manual_input"
+
+
+def test_insert_manual_idea_reuses_source(tmp_db: sqlite3.Connection):
+    book, _ = _add_book_and_source(tmp_db)
+    idea1 = insert_manual_idea(tmp_db, book.id, raw_quote="Q1")
+    idea2 = insert_manual_idea(tmp_db, book.id, raw_note="N2")
+    assert idea1.source_id == idea2.source_id

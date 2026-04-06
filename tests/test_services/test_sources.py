@@ -8,6 +8,7 @@ from anne.services.sources import (
     detect_duplicate,
     detect_source_type,
     fetch_url,
+    get_or_create_manual_source,
     import_source,
     is_url,
     list_sources,
@@ -80,3 +81,18 @@ def test_list_sources(tmp_db: sqlite3.Connection):
     import_source(tmp_db, book.id, SourceType.essay_txt, "b.txt", "fp2")
     sources = list_sources(tmp_db, book.id)
     assert len(sources) == 2
+
+
+def test_get_or_create_manual_source_creates(tmp_db: sqlite3.Connection):
+    book = create_book(tmp_db, "Test", "Author")
+    source = get_or_create_manual_source(tmp_db, book.id)
+    assert source.type == SourceType.manual_notes
+    assert source.path == "_manual_input"
+    assert source.book_id == book.id
+
+
+def test_get_or_create_manual_source_idempotent(tmp_db: sqlite3.Connection):
+    book = create_book(tmp_db, "Test", "Author")
+    source1 = get_or_create_manual_source(tmp_db, book.id)
+    source2 = get_or_create_manual_source(tmp_db, book.id)
+    assert source1.id == source2.id

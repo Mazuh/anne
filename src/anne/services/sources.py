@@ -85,6 +85,17 @@ def fetch_url(url: str, dest_dir: Path) -> Path:
     return dest
 
 
+def get_or_create_manual_source(conn: sqlite3.Connection, book_id: int) -> Source:
+    fingerprint = hashlib.sha256(f"manual_input_{book_id}".encode()).hexdigest()
+    row = conn.execute(
+        "SELECT * FROM sources WHERE book_id = ? AND fingerprint = ?",
+        (book_id, fingerprint),
+    ).fetchone()
+    if row is not None:
+        return Source(**dict(row))
+    return import_source(conn, book_id, SourceType.manual_notes, "_manual_input", fingerprint)
+
+
 def get_source(conn: sqlite3.Connection, source_id: int) -> Source | None:
     row = conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
     if row is None:

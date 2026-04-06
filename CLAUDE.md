@@ -48,6 +48,7 @@ uv run anne ideas prompt <id> -p "..."     # send custom prompt about a stable i
 uv run anne ideas curiosity [id] [-b slug] # generate curiosity phrase from random/specific idea
 uv run anne ideas list [slug]               # list ideas (--status, --page, --per-page)
 uv run anne ideas show <id>                 # show full idea details
+uv run anne ideas add <slug>               # manually add idea (--raw-quote, --raw-note, --ref; starts as triaged)
 uv run anne ideas edit <id>                 # edit idea fields (--status, --raw-quote, --tags, etc.)
 uv run anne db info                        # show what's in DB vs filesystem
 uv run anne db backup                      # create timestamped DB backup

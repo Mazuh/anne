@@ -42,6 +42,7 @@ class BookWorkspaceScreen(Screen):
         Binding("c", "copy_field", "Copy", show=False),
         Binding("question_mark", "ai_prompt", "AI prompt", show=False),
         Binding("A", "action_menu", "Actions"),
+        Binding("I", "add_idea", "Add idea"),
         Binding("slash", "search", "Search"),
         Binding("q", "go_back", "Back"),
     ]
@@ -420,6 +421,32 @@ class BookWorkspaceScreen(Screen):
                 update_idea(conn, idea_id, force=True, **{field: value})
             self.app.call_from_thread(self.notify, f"Idea {idea_id}: {field} updated.")
             self._load_ideas(select_idea_id=idea_id)
+        except ValueError as e:
+            self.app.call_from_thread(self.notify, str(e), severity="error")
+
+    def action_add_idea(self) -> None:
+        from anne.tui.modals.add_idea import AddIdeaModal
+
+        self.app.push_screen(
+            AddIdeaModal(),
+            callback=self._on_add_idea_result,
+        )
+
+    def _on_add_idea_result(self, result: tuple[str, str, str] | None) -> None:
+        if result is not None:
+            raw_quote, raw_note, raw_ref = result
+            self._do_add_idea(raw_quote or None, raw_note or None, raw_ref or None)
+
+    @work(thread=True)
+    def _do_add_idea(self, raw_quote: str | None, raw_note: str | None, raw_ref: str | None) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import insert_manual_idea
+
+        try:
+            with get_connection(self.app.settings.db_path) as conn:
+                idea = insert_manual_idea(conn, self._book.id, raw_quote, raw_note, raw_ref)
+            self.app.call_from_thread(self.notify, f"Idea {idea.id} added.")
+            self._load_ideas(select_idea_id=idea.id)
         except ValueError as e:
             self.app.call_from_thread(self.notify, str(e), severity="error")
 

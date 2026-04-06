@@ -974,3 +974,49 @@ def test_idea_curiosity_book_not_found(tmp_settings: Settings):
         result = runner.invoke(app, ["ideas", "curiosity", "--book", "nonexistent"])
     assert result.exit_code == 1
     assert "book not found" in result.output
+
+
+def _setup_book_only(tmp_settings: Settings) -> None:
+    apply_schema(tmp_settings.db_path)
+    with get_connection(tmp_settings.db_path) as conn:
+        create_book(conn, "Test Book", "Author")
+
+
+def test_idea_add_with_quote(tmp_settings: Settings):
+    _setup_book_only(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add", "test-book", "--raw-quote", "A great quote"])
+    assert result.exit_code == 0
+    assert "Added idea" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        idea = list_ideas_paginated(conn, status=IdeaStatus.triaged)
+        assert len(idea) == 1
+        assert idea[0].raw_quote == "A great quote"
+
+
+def test_idea_add_with_note_and_ref(tmp_settings: Settings):
+    _setup_book_only(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add", "test-book", "--raw-note", "My thought", "--ref", "Ch. 5"])
+    assert result.exit_code == 0
+    with get_connection(tmp_settings.db_path) as conn:
+        idea = list_ideas_paginated(conn, status=IdeaStatus.triaged)
+        assert len(idea) == 1
+        assert idea[0].raw_note == "My thought"
+        assert idea[0].raw_ref == "Ch. 5"
+
+
+def test_idea_add_no_fields(tmp_settings: Settings):
+    _setup_book_only(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add", "test-book"])
+    assert result.exit_code == 1
+    assert "at least one" in result.output.lower()
+
+
+def test_idea_add_bad_slug(tmp_settings: Settings):
+    apply_schema(tmp_settings.db_path)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add", "nonexistent", "--raw-quote", "Q"])
+    assert result.exit_code == 1
+    assert "not found" in result.output

@@ -27,6 +27,7 @@ from anne.services.ideas import (
     get_tags_with_counts,
     get_unparsed_sources,
     insert_ideas,
+    insert_manual_idea,
     list_ideas_paginated,
     publish_idea,
     queue_idea,
@@ -277,6 +278,33 @@ def edit(
 
     rprint(f"[green]Updated idea {updated.id}[/green] — status: {updated.status}")
     preview = _truncate(updated.reviewed_quote or updated.raw_quote or updated.raw_note, _MAX_PREVIEW_LEN)
+    if preview:
+        rprint(f'  "{escape(preview)}"')
+
+
+@ideas_app.command()
+def add(
+    book_slug: str = typer.Argument(help="Book slug"),
+    raw_quote: Optional[str] = typer.Option(None, "--raw-quote", help="Verbatim quote"),
+    raw_note: Optional[str] = typer.Option(None, "--raw-note", help="Your own note"),
+    ref: Optional[str] = typer.Option(None, "--ref", help="Reference (page, chapter, etc.)"),
+) -> None:
+    """Manually add an idea to a book (starts as triaged)."""
+    if not (raw_quote and raw_quote.strip()) and not (raw_note and raw_note.strip()):
+        rprint("[red]Error:[/red] at least one of --raw-quote or --raw-note is required")
+        raise typer.Exit(code=1)
+
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        book = get_book(conn, book_slug)
+        if book is None:
+            rprint(f"[red]Error:[/red] book not found: {book_slug}")
+            raise typer.Exit(code=1)
+
+        idea = insert_manual_idea(conn, book.id, raw_quote, raw_note, ref)
+
+    rprint(f"[green]Added idea {idea.id}[/green] — status: {idea.status}")
+    preview = _truncate(idea.raw_quote or idea.raw_note, _MAX_PREVIEW_LEN)
     if preview:
         rprint(f'  "{escape(preview)}"')
 
