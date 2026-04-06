@@ -21,6 +21,7 @@ _EDITABLE_FIELDS = [
 class EditFieldModal(ModalScreen[tuple[str, str] | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+enter", "save", "Save", show=False, priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -92,15 +93,18 @@ class EditFieldModal(ModalScreen[tuple[str, str] | None]):
             text_area.clear()
             text_area.insert(self._get_current_value(str(event.value)))
 
+    def action_save(self) -> None:
+        if self._preset_field:
+            field = self._preset_field
+        else:
+            select = self.query_one("#field-select", Select)
+            field = str(select.value)
+        text_area = self.query_one("#value-input", TextArea)
+        self.dismiss((field, text_area.text))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save-btn":
-            if self._preset_field:
-                field = self._preset_field
-            else:
-                select = self.query_one("#field-select", Select)
-                field = str(select.value)
-            text_area = self.query_one("#value-input", TextArea)
-            self.dismiss((field, text_area.text))
+            self.action_save()
         else:
             self.dismiss(None)
 
