@@ -92,6 +92,9 @@ def test_list_ideas_paginated_with_limit(tmp_db: sqlite3.Connection):
     assert len(page1) == 2
     assert len(page2) == 2
     assert len(page3) == 1
+    # Newest first (DESC order)
+    assert page1[0].id > page1[1].id
+    assert page1[-1].id > page2[0].id
     # No overlap
     ids = [i.id for i in page1 + page2 + page3]
     assert len(set(ids)) == 5

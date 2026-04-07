@@ -523,6 +523,9 @@ class TestTagFilter:
     async def test_tags_visible_in_detail(self, tagged_workspace_app: WorkspaceTestApp) -> None:
         async with tagged_workspace_app.run_test() as pilot:
             await wait_for_workers(tagged_workspace_app)
+            # Navigate to a tagged idea (newest-first, so untagged Q3 is first)
+            await pilot.press("down", "down")
+            await pilot.pause()
             content = tagged_workspace_app.screen.query_one("#idea-detail-content", Static)
             text = str(content.content)
             assert "Tags:" in text

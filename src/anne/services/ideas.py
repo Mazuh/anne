@@ -375,7 +375,7 @@ def list_ideas_paginated(
     _apply_search_conditions(conditions, params, search)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY id"
+    query += " ORDER BY id DESC"
     offset = (page - 1) * per_page
     query += " LIMIT ? OFFSET ?"
     params.extend([per_page, offset])

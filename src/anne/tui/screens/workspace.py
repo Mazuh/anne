@@ -74,6 +74,11 @@ class BookWorkspaceScreen(Screen):
         yield Input(placeholder="Search...", id="search-input")
         yield Footer()
 
+    def _reset_page_and_reload(self, select_idea_id: int | None = None) -> None:
+        idea_list = self.query_one("#idea-list", IdeaList)
+        idea_list.page = 1
+        self._load_ideas(select_idea_id=select_idea_id)
+
     @work(thread=True)
     def _load_ideas(self, select_idea_id: int | None = None) -> None:
         from anne.db.connection import get_connection
@@ -447,7 +452,7 @@ class BookWorkspaceScreen(Screen):
             with get_connection(self.app.settings.db_path) as conn:
                 idea = insert_manual_idea(conn, self._book.id, raw_quote, raw_note, raw_ref)
             self.app.call_from_thread(self.notify, f"Idea {idea.id} added.")
-            self._load_ideas(select_idea_id=idea.id)
+            self.app.call_from_thread(self._reset_page_and_reload, idea.id)
         except ValueError as e:
             self.app.call_from_thread(self.notify, str(e), severity="error")
 
