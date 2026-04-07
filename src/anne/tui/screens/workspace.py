@@ -16,7 +16,7 @@ from textual.worker import Worker, get_current_worker
 if TYPE_CHECKING:
     from anne.tui.modals.loading import LoadingModal
 
-from anne.models import Book, Idea, IdeaStatus
+from anne.models import Book, Idea, IdeaStatus, STABLE_STATUSES
 from anne.services.pipeline import RUSH_ELIGIBLE
 from anne.tui.widgets.action_panel import ActionPanel
 from anne.tui.widgets.idea_detail import IdeaDetail
@@ -57,6 +57,7 @@ class BookWorkspaceScreen(Screen):
         self._ai_worker: Worker | None = None
         self._current_prompt_idea: Idea | None = None
         self._current_prompt_text: str = ""
+        self._current_book_action: tuple[str, ...] | None = None
 
     def on_mount(self) -> None:
         self.sub_title = self._book.title
@@ -642,11 +643,17 @@ class BookWorkspaceScreen(Screen):
         )
 
     def _on_prompt_response(self, result: bool | None) -> None:
+        book_action = self._current_book_action
         idea = self._current_prompt_idea
         prompt = self._current_prompt_text
         self._current_prompt_idea = None
         self._current_prompt_text = ""
-        if result is True and idea is not None:
+        self._current_book_action = None
+        if result is not True:
+            return
+        if book_action is not None:
+            self._retry_book_action(book_action)
+        elif idea is not None:
             from anne.tui.modals.custom_prompt import CustomPromptModal
 
             self.app.push_screen(
@@ -655,6 +662,15 @@ class BookWorkspaceScreen(Screen):
                     _idea, prompt_text
                 ),
             )
+
+    def _retry_book_action(self, action: tuple[str, ...]) -> None:
+        name = action[0]
+        if name == "curiosity":
+            self._start_book_llm_action(self._run_curiosity, int(action[1]))
+        elif name == "digest_notes":
+            self._start_book_llm_action(self._run_digest_notes)
+        elif name == "video_prompts":
+            self._start_book_llm_action(self._run_video_prompts)
 
     # Action menu (LLM pipeline per-idea)
     _LLM_ACTION_FOR_STATUS: dict[str, str] = {
@@ -668,40 +684,52 @@ class BookWorkspaceScreen(Screen):
         "Review with LLM": "Refine quote and add context with LLM",
         "Caption with LLM": "Generate Instagram caption with LLM",
         "Rush to ready": "Run all remaining LLM stages to reach ready",
+        "Curiosity phrase": "Generate a curiosity-inducing phrase from the idea's quote",
+        "Digest notes": "Generate a thematic digest of all commented ideas for this book",
+        "Video prompts": "Generate video background prompts for this book's quote posts",
     }
 
     def action_action_menu(self) -> None:
         idea_list = self.query_one("#idea-list", IdeaList)
         idea = idea_list.get_selected_idea()
-        if not idea:
-            return
 
         options: list[str] = []
-        action_label = self._LLM_ACTION_FOR_STATUS.get(idea.status)
-        if action_label:
-            options.append(action_label)
-        if idea.status in RUSH_ELIGIBLE:
-            options.append("Rush to ready")
+        idea_id: int | None = None
 
-        if not options:
-            self.notify("No LLM actions available for this status.", severity="warning")
-            return
+        if idea:
+            idea_id = idea.id
+            action_label = self._LLM_ACTION_FOR_STATUS.get(idea.status)
+            if action_label:
+                options.append(action_label)
+            if idea.status in RUSH_ELIGIBLE:
+                options.append("Rush to ready")
+            if idea.status in STABLE_STATUSES and idea.raw_quote:
+                options.append("Curiosity phrase")
+
+        options.append("Digest notes")
+        options.append("Video prompts")
 
         from anne.tui.modals.action_menu import ActionModal
         self.app.push_screen(
             ActionModal("LLM Actions", options, self._LLM_ACTION_DESCRIPTIONS),
-            callback=lambda result: self._on_llm_action_selected(idea.id, result),
+            callback=lambda result: self._on_llm_action_selected(idea_id, result),
         )
 
-    def _on_llm_action_selected(self, idea_id: int, action: str | None) -> None:
-        if action == "Triage with LLM":
+    def _on_llm_action_selected(self, idea_id: int | None, action: str | None) -> None:
+        if action == "Triage with LLM" and idea_id is not None:
             self._start_llm_action(self._run_llm_triage, idea_id)
-        elif action == "Review with LLM":
+        elif action == "Review with LLM" and idea_id is not None:
             self._start_llm_action(self._run_llm_review, idea_id)
-        elif action == "Caption with LLM":
+        elif action == "Caption with LLM" and idea_id is not None:
             self._start_llm_action(self._run_llm_caption, idea_id)
-        elif action == "Rush to ready":
+        elif action == "Rush to ready" and idea_id is not None:
             self._start_llm_action(self._run_llm_rush, idea_id)
+        elif action == "Curiosity phrase" and idea_id is not None:
+            self._start_book_llm_action(self._run_curiosity, idea_id)
+        elif action == "Digest notes":
+            self._start_book_llm_action(self._run_digest_notes)
+        elif action == "Video prompts":
+            self._start_book_llm_action(self._run_video_prompts)
 
     def _start_llm_action(self, worker_method: object, idea_id: int) -> None:
         if self._llm_in_progress:
@@ -884,3 +912,229 @@ class BookWorkspaceScreen(Screen):
             self.app.call_from_thread(self._dismiss_loading)
             self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
             self._load_ideas(select_idea_id=idea_id)
+
+    # Book-level / response-display LLM actions (curiosity, digest-notes, video-prompts)
+
+    def _start_book_llm_action(self, worker_method: object, *args: object) -> None:
+        if self._llm_in_progress:
+            self.notify("LLM call already in progress.", severity="warning")
+            return
+        self._llm_in_progress = True
+        from anne.tui.modals.loading import LoadingModal
+
+        self._loading_modal = LoadingModal()
+        self.app.push_screen(
+            self._loading_modal,
+            callback=self._on_loading_dismissed,
+        )
+        self._ai_worker = worker_method(*args)
+
+    @work(thread=True)
+    def _run_curiosity(self, idea_id: int) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_idea
+        from anne.services.llm import generate_curiosity_phrase
+        from anne.services.pipeline import format_llm_error
+
+        worker = get_current_worker()
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        with get_connection(settings.db_path) as conn:
+            idea = get_idea(conn, idea_id)
+        if not idea or not idea.raw_quote:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, "Idea not found or missing raw quote.", severity="error")
+            return
+
+        try:
+            curiosity = generate_curiosity_phrase(
+                api_key=api_key,
+                raw_quote=idea.raw_quote,
+                content_language=settings.content_language,
+                min_interval=settings.llm_call_interval,
+            )
+            if worker.is_cancelled:
+                return
+
+            lines = [curiosity, "", "---"]
+            if idea.reviewed_quote:
+                lines.append(f'Reviewed quote: "{idea.reviewed_quote}"')
+            if idea.reviewed_comment:
+                lines.append(f"Reviewed comment: {idea.reviewed_comment}")
+            if idea.presentation_text:
+                lines.append(f"Caption: {idea.presentation_text}")
+            response = "\n".join(lines)
+
+            self._current_book_action = ("curiosity", str(idea_id))
+            self.app.call_from_thread(self._dismiss_loading_and_show_response, response, f"Curiosity phrase for idea #{idea_id}")
+        except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+
+    @work(thread=True)
+    def _run_digest_notes(self) -> None:
+        from datetime import datetime
+
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_commented_ideas
+        from anne.services.llm import digest_notes_with_llm, synthesize_digest_with_llm
+        from anne.services.pipeline import format_llm_error
+
+        worker = get_current_worker()
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        with get_connection(settings.db_path) as conn:
+            ideas = get_commented_ideas(conn, self._book.id)
+
+        if not ideas:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(
+                self.notify,
+                "No triaged+ ideas with comments found for this book.",
+                severity="warning",
+            )
+            return
+
+        try:
+            chunks = [
+                ideas[i : i + settings.digest_chunk_size]
+                for i in range(0, len(ideas), settings.digest_chunk_size)
+            ]
+
+            chunk_digests: list[str] = []
+            for chunk in chunks:
+                if worker.is_cancelled:
+                    return
+                digest = digest_notes_with_llm(
+                    api_key=api_key,
+                    book_title=self._book.title,
+                    book_author=self._book.author,
+                    ideas=chunk,
+                    content_language=settings.content_language,
+                    max_input_tokens=settings.max_llm_input_tokens,
+                    min_interval=settings.llm_call_interval,
+                )
+                chunk_digests.append(digest)
+
+            if worker.is_cancelled:
+                return
+
+            if len(chunk_digests) > 1:
+                final_digest = synthesize_digest_with_llm(
+                    api_key=api_key,
+                    book_title=self._book.title,
+                    book_author=self._book.author,
+                    chunk_digests=chunk_digests,
+                    content_language=settings.content_language,
+                    min_interval=settings.llm_call_interval,
+                )
+            else:
+                final_digest = chunk_digests[0]
+
+            if worker.is_cancelled:
+                return
+
+            now = datetime.now()
+            seconds_in_day = now.hour * 3600 + now.minute * 60 + now.second
+            filename = f"{now.strftime('%Y-%m-%d')}-{seconds_in_day}-{self._book.slug}.md"
+            book_dir = settings.books_dir / self._book.slug
+            book_dir.mkdir(parents=True, exist_ok=True)
+            output_path = book_dir / filename
+            output_path.write_text(final_digest, encoding="utf-8")
+
+            self._current_book_action = ("digest_notes",)
+            self.app.call_from_thread(
+                self._dismiss_loading_and_show_response,
+                final_digest,
+                f"Digest notes ({len(ideas)} ideas) — saved to {output_path.name}",
+            )
+            self.app.call_from_thread(self.notify, f"Digest saved: {output_path}")
+        except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")
+
+    @work(thread=True)
+    def _run_video_prompts(self) -> None:
+        from anne.db.connection import get_connection
+        from anne.services.ideas import get_sample_quotes_by_tag, get_tags_with_counts
+        from anne.services.llm import generate_video_prompts
+        from anne.services.pipeline import format_llm_error
+
+        worker = get_current_worker()
+        settings = self.app.settings
+        api_key = settings.gemini_api_key
+        if not api_key:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, "Gemini API key not configured", severity="error")
+            return
+
+        with get_connection(settings.db_path) as conn:
+            tags = get_tags_with_counts(conn, self._book.id)
+            if not tags:
+                if worker.is_cancelled:
+                    return
+                self.app.call_from_thread(self._dismiss_loading)
+                self.app.call_from_thread(
+                    self.notify,
+                    "No tags found. Ideas need to be captioned first.",
+                    severity="warning",
+                )
+                return
+            sample_quotes = get_sample_quotes_by_tag(conn, self._book.id)
+
+        try:
+            results = generate_video_prompts(
+                api_key=api_key,
+                book_title=self._book.title,
+                book_author=self._book.author,
+                tags_with_counts=tags,
+                sample_quotes=sample_quotes,
+                count=3,
+                min_interval=settings.llm_call_interval,
+            )
+            if worker.is_cancelled:
+                return
+
+            lines: list[str] = []
+            for i, vp in enumerate(results, 1):
+                lines.append(f"{i}. {vp.prompt}")
+                if vp.matching_tags:
+                    lines.append(f"   Tags: {', '.join(vp.matching_tags)}")
+                lines.append("")
+            response = "\n".join(lines).rstrip()
+
+            self._current_book_action = ("video_prompts",)
+            self.app.call_from_thread(
+                self._dismiss_loading_and_show_response,
+                response,
+                f"Video prompts for \"{self._book.title}\"",
+            )
+        except Exception as e:
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._dismiss_loading)
+            self.app.call_from_thread(self.notify, format_llm_error(e), severity="error")

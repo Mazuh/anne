@@ -463,8 +463,8 @@ class TestWorkspaceActionMenu:
             labels = [str(b.label) for b in buttons]
             assert "Caption with LLM" in labels
 
-    async def test_action_menu_notifies_no_actions_for_rejected(self, workspace_app: WorkspaceTestApp) -> None:
-        """Pressing A on a rejected idea shows a warning notification, no modal."""
+    async def test_action_menu_shows_only_book_actions_for_rejected(self, workspace_app: WorkspaceTestApp) -> None:
+        """Pressing A on a rejected idea shows only book-level actions (no idea pipeline)."""
         async with workspace_app.run_test() as pilot:
             await wait_for_workers(workspace_app)
             idea_list = workspace_app.screen.query_one("#idea-list", IdeaList)
@@ -479,9 +479,11 @@ class TestWorkspaceActionMenu:
 
             await pilot.press("A")
             await pilot.pause()
-            # Should NOT open a modal — should stay on workspace
-            from anne.tui.screens.workspace import BookWorkspaceScreen
-            assert isinstance(workspace_app.screen, BookWorkspaceScreen)
+            from anne.tui.modals.action_menu import ActionModal
+            modal = workspace_app.screen
+            assert isinstance(modal, ActionModal)
+            # Only book-level actions should be available, no idea pipeline actions
+            assert modal._options == ["Digest notes", "Video prompts"]
 
 
 class TestTagFilter:
