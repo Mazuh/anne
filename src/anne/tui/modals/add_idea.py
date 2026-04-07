@@ -60,7 +60,7 @@ class AddIdeaModal(ModalScreen[tuple[str, str, str] | None]):
             yield Label("Note", classes="field-label")
             yield TextArea(id="note-input")
             yield Label("Ref", classes="field-label")
-            yield Input(id="ref-input", placeholder="e.g. p. 42, ch. 3")
+            yield Input(id="ref-input")
             with Horizontal():
                 yield Button("Save", variant="success", id="save-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
