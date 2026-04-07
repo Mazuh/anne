@@ -2,12 +2,13 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Static
+from textual.widgets import Button, Label, Static, TextArea
 
 
 class CustomPromptModal(ModalScreen[str | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+enter", "submit", "Submit", show=False, priority=True),
     ]
 
     def __init__(self, initial_prompt: str = "") -> None:
@@ -33,7 +34,8 @@ class CustomPromptModal(ModalScreen[str | None]):
         margin-bottom: 1;
     }
 
-    CustomPromptModal Input {
+    CustomPromptModal TextArea {
+        height: 6;
         margin-bottom: 1;
     }
 
@@ -54,26 +56,24 @@ class CustomPromptModal(ModalScreen[str | None]):
                 "[dim]Ask a question about this idea."
                 " This is read-only — nothing will be changed.[/dim]"
             )
-            yield Input(
-                placeholder="Type your prompt here...",
-                value=self._initial_prompt,
+            yield TextArea(
+                self._initial_prompt,
                 id="prompt-input",
             )
             with Horizontal():
                 yield Button("Submit", variant="success", id="submit-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
             yield Static(
-                "Enter to submit, Esc to cancel",
+                "Ctrl+Enter to submit, Esc to cancel.",
                 classes="hint",
             )
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "prompt-input":
-            self._submit()
+    def action_submit(self) -> None:
+        self._submit()
 
     def _submit(self) -> None:
-        input_widget = self.query_one("#prompt-input", Input)
-        text = input_widget.value.strip()
+        text_area = self.query_one("#prompt-input", TextArea)
+        text = text_area.text.strip()
         if not text:
             self.notify("Prompt cannot be empty.", severity="warning")
             return

@@ -81,32 +81,34 @@ class TestCustomPromptModal:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            from textual.widgets import Input
+            from textual.widgets import TextArea
 
-            input_widget = app.screen.query_one("#prompt-input", Input)
-            input_widget.value = "Reword this casually"
+            text_area = app.screen.query_one("#prompt-input", TextArea)
+            text_area.clear()
+            text_area.insert("Reword this casually")
             btn = app.screen.query_one("#submit-btn", Button)
             await pilot.click(btn)
             await pilot.pause()
         assert app.result == "Reword this casually"
 
-    async def test_enter_submits(self) -> None:
+    async def test_ctrl_enter_submits(self) -> None:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            from textual.widgets import Input
+            from textual.widgets import TextArea
 
-            input_widget = app.screen.query_one("#prompt-input", Input)
-            input_widget.value = "Translate to English"
-            await pilot.press("enter")
+            text_area = app.screen.query_one("#prompt-input", TextArea)
+            text_area.clear()
+            text_area.insert("Translate to English")
+            await pilot.press("ctrl+enter")
             await pilot.pause()
         assert app.result == "Translate to English"
 
-    async def test_enter_on_empty_does_not_submit(self) -> None:
+    async def test_ctrl_enter_on_empty_does_not_submit(self) -> None:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("enter")
+            await pilot.press("ctrl+enter")
             await pilot.pause()
             assert app._result_sentinel is True
 
@@ -152,8 +154,8 @@ class TestCustomPromptModal:
             hints = app.screen.query(".hint")
             assert len(hints) == 1
             text = str(hints[0].render())
-            assert "Enter to submit" in text
-            assert "Esc to cancel" in text
+            assert "Ctrl+Enter to submit" in text
+            assert "Esc to cancel." in text
 
     async def test_initial_prompt_prefills_input(self) -> None:
         class PrefillApp(App):
@@ -178,10 +180,10 @@ class TestCustomPromptModal:
         app = PrefillApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            from textual.widgets import Input
+            from textual.widgets import TextArea
 
-            input_widget = app.screen.query_one("#prompt-input", Input)
-            assert input_widget.value == "old text"
+            text_area = app.screen.query_one("#prompt-input", TextArea)
+            assert text_area.text == "old text"
 
 
 class TestPromptResponseModal:

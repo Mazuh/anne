@@ -2,7 +2,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, Select, TextArea
+from textual.widgets import Button, Label, Select, Static, TextArea
 
 from anne.models import Idea
 
@@ -56,6 +56,11 @@ class EditFieldModal(ModalScreen[tuple[str, str] | None]):
     EditFieldModal Button {
         margin: 0 1;
     }
+
+    EditFieldModal .hint {
+        color: $text-muted;
+        width: 100%;
+    }
     """
 
     def __init__(self, idea: Idea, preset_field: str | None = None) -> None:
@@ -80,6 +85,10 @@ class EditFieldModal(ModalScreen[tuple[str, str] | None]):
             with Horizontal():
                 yield Button("Save", variant="success", id="save-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
+            yield Static(
+                "Ctrl+Enter to save, Esc to cancel.",
+                classes="hint",
+            )
 
     def _get_current_value(self, field: str) -> str:
         value = getattr(self._idea, field, None)
