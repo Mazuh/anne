@@ -21,7 +21,7 @@ _EDITABLE_FIELDS = [
 class EditFieldModal(ModalScreen[tuple[str, str] | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("ctrl+enter", "save", "Save", show=False, priority=True),
+        Binding("ctrl+s", "save", "Save", show=False, priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -86,7 +86,7 @@ class EditFieldModal(ModalScreen[tuple[str, str] | None]):
                 yield Button("Save", variant="success", id="save-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
             yield Static(
-                "Ctrl+Enter to save, Esc to cancel.",
+                "Ctrl+S to save, Esc to cancel.",
                 classes="hint",
             )
 

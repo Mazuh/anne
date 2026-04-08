@@ -8,6 +8,7 @@ from textual.widgets import Button, Label, TextArea
 class ConfirmModal(ModalScreen[tuple[bool, str]]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+s", "confirm", "Confirm", show=False, priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -49,20 +50,25 @@ class ConfirmModal(ModalScreen[tuple[bool, str]]):
             yield Label(self._message)
             if self._show_reason:
                 yield TextArea(id="reason-input")
-                yield Label("[dim]Optional reason (Enter to confirm, Esc to cancel)[/dim]")
+                yield Label("[dim]Optional reason (Ctrl+S to confirm, Esc to cancel)[/dim]")
             with Horizontal():
                 yield Button("Confirm", variant="error", id="confirm-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
 
+    def _do_confirm(self) -> None:
+        reason = ""
+        if self._show_reason:
+            reason = self.query_one("#reason-input", TextArea).text.strip()
+        self.dismiss((True, reason))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm-btn":
-            reason = ""
-            if self._show_reason:
-                text_area = self.query_one("#reason-input", TextArea)
-                reason = text_area.text.strip()
-            self.dismiss((True, reason))
+            self._do_confirm()
         else:
             self.dismiss((False, ""))
+
+    def action_confirm(self) -> None:
+        self._do_confirm()
 
     def action_cancel(self) -> None:
         self.dismiss((False, ""))

@@ -67,6 +67,7 @@ uv run anne start <slug>                   # open TUI directly into book workspa
 - StrEnum for status/type fields
 - Services layer between CLI and DB
 - TUI must be fully keyboard-accessible; all modals must include keyboard legend hints — users must not need to use the mouse
+- Text-input modals (TextArea/Input forms) use `Ctrl+S` for save/submit — never `Enter` or `Ctrl+Enter` (unreliable on macOS terminals). Selection modals (RadioSet) use `Enter` to confirm.
 
 ## Database
 

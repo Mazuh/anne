@@ -5,11 +5,31 @@ import pytest
 from textual.app import App
 from textual.widgets import Button, Static
 
+from anne.tui.modals.confirm import ConfirmModal
 from anne.tui.modals.custom_prompt import CustomPromptModal
 from anne.tui.modals.loading import LoadingModal
 from anne.tui.modals.prompt_response import PromptResponseModal
 
 _CSS_PATH = Path(__file__).parents[2] / "src" / "anne" / "tui" / "app.tcss"
+
+
+class ConfirmTestApp(App):
+    CSS_PATH = _CSS_PATH
+
+    def __init__(self, show_reason: bool = False) -> None:
+        super().__init__()
+        self._show_reason = show_reason
+        self.result: tuple[bool, str] | None = None
+
+    def on_mount(self) -> None:
+        self.push_screen(
+            ConfirmModal("Are you sure?", show_reason=self._show_reason),
+            callback=self._on_result,
+        )
+
+    def _on_result(self, result: tuple[bool, str]) -> None:
+        self.result = result
+        self.exit()
 
 
 class PromptInputTestApp(App):
@@ -91,7 +111,7 @@ class TestCustomPromptModal:
             await pilot.pause()
         assert app.result == "Reword this casually"
 
-    async def test_ctrl_enter_submits(self) -> None:
+    async def test_ctrl_s_submits(self) -> None:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
@@ -100,15 +120,15 @@ class TestCustomPromptModal:
             text_area = app.screen.query_one("#prompt-input", TextArea)
             text_area.clear()
             text_area.insert("Translate to English")
-            await pilot.press("ctrl+enter")
+            await pilot.press("ctrl+s")
             await pilot.pause()
         assert app.result == "Translate to English"
 
-    async def test_ctrl_enter_on_empty_does_not_submit(self) -> None:
+    async def test_ctrl_s_on_empty_does_not_submit(self) -> None:
         app = PromptInputTestApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("ctrl+enter")
+            await pilot.press("ctrl+s")
             await pilot.pause()
             assert app._result_sentinel is True
 
@@ -154,7 +174,7 @@ class TestCustomPromptModal:
             hints = app.screen.query(".hint")
             assert len(hints) == 1
             text = str(hints[0].render())
-            assert "Ctrl+Enter to submit" in text
+            assert "Ctrl+S to submit" in text
             assert "Esc to cancel." in text
 
     async def test_initial_prompt_prefills_input(self) -> None:
@@ -306,3 +326,33 @@ class TestLoadingModal:
             hints = app.screen.query(".hint")
             assert len(hints) == 1
             assert "Esc to cancel" in str(hints[0].render())
+
+
+class TestConfirmModal:
+    async def test_ctrl_s_confirms_with_reason(self) -> None:
+        app = ConfirmTestApp(show_reason=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            from textual.widgets import TextArea
+
+            text_area = app.screen.query_one("#reason-input", TextArea)
+            text_area.insert("not relevant")
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+        assert app.result == (True, "not relevant")
+
+    async def test_ctrl_s_confirms_without_reason(self) -> None:
+        app = ConfirmTestApp(show_reason=False)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+        assert app.result == (True, "")
+
+    async def test_escape_cancels(self) -> None:
+        app = ConfirmTestApp(show_reason=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+        assert app.result == (False, "")

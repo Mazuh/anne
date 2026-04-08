@@ -8,7 +8,7 @@ from textual.widgets import Button, Input, Label, Static, TextArea
 class AddIdeaModal(ModalScreen[tuple[str, str, str] | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("ctrl+enter", "save", "Save", show=False, priority=True),
+        Binding("ctrl+s", "save", "Save", show=False, priority=True),
     ]
 
     DEFAULT_CSS = """
@@ -65,7 +65,7 @@ class AddIdeaModal(ModalScreen[tuple[str, str, str] | None]):
                 yield Button("Save", variant="success", id="save-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
             yield Static(
-                "Fill at least quote or note. Ctrl+Enter to save, Tab to switch fields, Esc to cancel.",
+                "Fill at least quote or note. Ctrl+S to save, Tab to switch fields, Esc to cancel.",
                 classes="hint",
             )
 

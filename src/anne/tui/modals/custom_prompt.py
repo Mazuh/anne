@@ -8,7 +8,7 @@ from textual.widgets import Button, Label, Static, TextArea
 class CustomPromptModal(ModalScreen[str | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("ctrl+enter", "submit", "Submit", show=False, priority=True),
+        Binding("ctrl+s", "submit", "Submit", show=False, priority=True),
     ]
 
     def __init__(self, initial_prompt: str = "") -> None:
@@ -64,7 +64,7 @@ class CustomPromptModal(ModalScreen[str | None]):
                 yield Button("Submit", variant="success", id="submit-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
             yield Static(
-                "Ctrl+Enter to submit, Esc to cancel.",
+                "Ctrl+S to submit, Esc to cancel.",
                 classes="hint",
             )
 
