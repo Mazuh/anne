@@ -1020,3 +1020,95 @@ def test_idea_add_bad_slug(tmp_settings: Settings):
         result = runner.invoke(app, ["ideas", "add", "nonexistent", "--raw-quote", "Q"])
     assert result.exit_code == 1
     assert "not found" in result.output
+
+
+def test_idea_add_from_txt_basic(tmp_settings: Settings, tmp_path: Path):
+    _setup_book_only(tmp_settings)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("First quote here.\n\nSecond quote here.\n\nThird quote here.\n")
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "test-book", str(notes)])
+    assert result.exit_code == 0
+    assert "Added 3 idea" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        ideas = list_ideas_paginated(conn, status=IdeaStatus.triaged)
+        assert len(ideas) == 3
+        quotes = sorted(i.raw_quote for i in ideas)
+        assert quotes == ["First quote here.", "Second quote here.", "Third quote here."]
+
+
+def test_idea_add_from_txt_multiline_block(tmp_settings: Settings, tmp_path: Path):
+    _setup_book_only(tmp_settings)
+    notes = tmp_path / "notes.txt"
+    notes.write_text(
+        "Há fraquezas fatais:\n"
+        "- valente demais;\n"
+        "- covarde na batalha;\n"
+        "\n"
+        "Single line idea.\n"
+    )
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "test-book", str(notes)])
+    assert result.exit_code == 0
+    with get_connection(tmp_settings.db_path) as conn:
+        ideas = list_ideas_paginated(conn, status=IdeaStatus.triaged)
+        assert len(ideas) == 2
+        multi = next(i for i in ideas if "fraquezas" in i.raw_quote)
+        assert "valente demais" in multi.raw_quote
+        assert "covarde" in multi.raw_quote
+        assert multi.raw_quote.count("\n") == 2
+
+
+def test_idea_add_from_txt_empty_file(tmp_settings: Settings, tmp_path: Path):
+    _setup_book_only(tmp_settings)
+    notes = tmp_path / "empty.txt"
+    notes.write_text("\n\n   \n\n")
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "test-book", str(notes)])
+    assert result.exit_code == 1
+    assert "No non-empty blocks" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        assert len(list_ideas_paginated(conn, status=IdeaStatus.triaged)) == 0
+
+
+def test_idea_add_from_txt_dry_run(tmp_settings: Settings, tmp_path: Path):
+    _setup_book_only(tmp_settings)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("Quote one.\n\nQuote two.\n")
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "test-book", str(notes), "--dry-run"])
+    assert result.exit_code == 0
+    assert "Would insert 2 idea" in result.output
+    assert "Quote one." in result.output
+    assert "Quote two." in result.output
+    assert "dry run" in result.output
+    with get_connection(tmp_settings.db_path) as conn:
+        assert len(list_ideas_paginated(conn, status=IdeaStatus.triaged)) == 0
+
+
+def test_idea_add_from_txt_bad_slug(tmp_settings: Settings, tmp_path: Path):
+    apply_schema(tmp_settings.db_path)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("A quote.\n")
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "nonexistent", str(notes)])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_idea_add_from_txt_missing_file(tmp_settings: Settings, tmp_path: Path):
+    _setup_book_only(tmp_settings)
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "test-book", str(tmp_path / "nope.txt")])
+    assert result.exit_code == 1
+    assert "file not found" in result.output.lower()
+
+
+def test_idea_add_from_txt_dry_run_bad_slug(tmp_settings: Settings, tmp_path: Path):
+    apply_schema(tmp_settings.db_path)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("A quote.\n")
+    with patch("anne.cli.ideas.load_settings", return_value=tmp_settings):
+        result = runner.invoke(app, ["ideas", "add-from-txt", "nonexistent", str(notes), "--dry-run"])
+    assert result.exit_code == 1
+    assert "not found" in result.output

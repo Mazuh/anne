@@ -1,5 +1,6 @@
 import json
 import math
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -14,7 +15,7 @@ from anne.utils.icloud import ensure_available, is_icloud_evicted
 from anne.db.connection import get_connection
 from anne.models import Book, Idea, IdeaStatus, STABLE_STATUSES, Source, SourceType
 from anne.services.books import get_book, get_book_by_id, get_book_titles, list_books
-from anne.services.sources import get_source
+from anne.services.sources import get_or_create_manual_source, get_source
 from anne.services.ideas import (
     triage_approve_idea,
     caption_idea,
@@ -310,6 +311,49 @@ def add(
     preview = _truncate(idea.raw_quote or idea.raw_note, _MAX_PREVIEW_LEN)
     if preview:
         rprint(f'  "{escape(preview)}"')
+
+
+@ideas_app.command("add-from-txt")
+def add_from_txt(
+    book_slug: str = typer.Argument(help="Book slug"),
+    file_path: Path = typer.Argument(help="Path to text file with blank-line-separated quotes"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview blocks without writing to DB"),
+) -> None:
+    """Bulk-insert blank-line-separated quotes from a text file (always status: triaged)."""
+    if not file_path.is_file():
+        rprint(f"[red]Error:[/red] file not found: {file_path}")
+        raise typer.Exit(code=1)
+
+    content = file_path.read_text(encoding="utf-8")
+    blocks = [b.strip() for b in re.split(r"\n\s*\n+", content)]
+    blocks = [b for b in blocks if b]
+
+    if not blocks:
+        rprint("[yellow]No non-empty blocks found in file[/yellow]")
+        raise typer.Exit(code=1)
+
+    settings = load_settings()
+    with get_connection(settings.db_path) as conn:
+        book = get_book(conn, book_slug)
+        if book is None:
+            rprint(f"[red]Error:[/red] book not found: {book_slug}")
+            raise typer.Exit(code=1)
+
+        if dry_run:
+            rprint(f"[bold]Would insert {len(blocks)} idea(s) into '{book_slug}':[/bold]")
+            for i, block in enumerate(blocks, 1):
+                rprint(f'  {i}. "{escape(_truncate(block, _MAX_PREVIEW_LEN))}"')
+            rprint("[dim](dry run — no changes written)[/dim]")
+            return
+
+        source = get_or_create_manual_source(conn, book.id)
+        for block in blocks:
+            insert_manual_idea(conn, book.id, raw_quote=block, source=source)
+
+    rprint(f"[green]Added {len(blocks)} idea(s)[/green] — status: triaged")
+    rprint(f'  first: "{escape(_truncate(blocks[0], _MAX_PREVIEW_LEN))}"')
+    if len(blocks) > 1:
+        rprint(f'  last:  "{escape(_truncate(blocks[-1], _MAX_PREVIEW_LEN))}"')
 
 
 def _parse_source(source: Source, content: str, api_key: str | None, max_input_tokens: int) -> list[ParsedIdea]:

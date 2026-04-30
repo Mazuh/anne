@@ -12,11 +12,13 @@ def insert_manual_idea(
     raw_quote: str | None = None,
     raw_note: str | None = None,
     raw_ref: str | None = None,
+    source: Source | None = None,
 ) -> Idea:
     if not (raw_quote and raw_quote.strip()) and not (raw_note and raw_note.strip()):
         raise ValueError("At least one of raw_quote or raw_note must be provided")
 
-    source = get_or_create_manual_source(conn, book_id)
+    if source is None:
+        source = get_or_create_manual_source(conn, book_id)
     conn.execute(
         """INSERT INTO ideas (book_id, source_id, status, raw_quote, raw_note, raw_ref)
            VALUES (?, ?, 'triaged', ?, ?, ?)""",
