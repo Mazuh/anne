@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from textual import on, work
@@ -57,7 +58,7 @@ class BookWorkspaceScreen(Screen):
         self._ai_worker: Worker | None = None
         self._current_prompt_idea: Idea | None = None
         self._current_prompt_text: str = ""
-        self._current_book_action: tuple[str, ...] | None = None
+        self._current_book_action: Callable[[], None] | None = None
 
     def on_mount(self) -> None:
         self.sub_title = self._book.title
@@ -652,7 +653,7 @@ class BookWorkspaceScreen(Screen):
         if result is not True:
             return
         if book_action is not None:
-            self._retry_book_action(book_action)
+            book_action()
         elif idea is not None:
             from anne.tui.modals.custom_prompt import CustomPromptModal
 
@@ -662,15 +663,6 @@ class BookWorkspaceScreen(Screen):
                     _idea, prompt_text
                 ),
             )
-
-    def _retry_book_action(self, action: tuple[str, ...]) -> None:
-        name = action[0]
-        if name == "curiosity":
-            self._start_book_llm_action(self._run_curiosity, int(action[1]))
-        elif name == "digest_notes":
-            self._start_book_llm_action(self._run_digest_notes)
-        elif name == "video_prompts":
-            self._start_book_llm_action(self._run_video_prompts)
 
     # Action menu (LLM pipeline per-idea)
     _LLM_ACTION_FOR_STATUS: dict[str, str] = {
@@ -725,13 +717,13 @@ class BookWorkspaceScreen(Screen):
         elif action == "Rush to ready" and idea_id is not None:
             self._start_llm_action(self._run_llm_rush, idea_id)
         elif action == "Curiosity phrase" and idea_id is not None:
-            self._start_book_llm_action(self._run_curiosity, idea_id)
+            self._start_llm_action(self._run_curiosity, idea_id)
         elif action == "Digest notes":
-            self._start_book_llm_action(self._run_digest_notes)
+            self._start_llm_action(self._run_digest_notes)
         elif action == "Video prompts":
-            self._start_book_llm_action(self._run_video_prompts)
+            self._start_llm_action(self._run_video_prompts)
 
-    def _start_llm_action(self, worker_method: object, idea_id: int) -> None:
+    def _start_llm_action(self, worker_method: object, *args: object) -> None:
         if self._llm_in_progress:
             self.notify("LLM call already in progress.", severity="warning")
             return
@@ -743,7 +735,7 @@ class BookWorkspaceScreen(Screen):
             self._loading_modal,
             callback=self._on_loading_dismissed,
         )
-        self._ai_worker = worker_method(idea_id)
+        self._ai_worker = worker_method(*args)
 
     @work(thread=True)
     def _run_llm_triage(self, idea_id: int) -> None:
@@ -915,20 +907,6 @@ class BookWorkspaceScreen(Screen):
 
     # Book-level / response-display LLM actions (curiosity, digest-notes, video-prompts)
 
-    def _start_book_llm_action(self, worker_method: object, *args: object) -> None:
-        if self._llm_in_progress:
-            self.notify("LLM call already in progress.", severity="warning")
-            return
-        self._llm_in_progress = True
-        from anne.tui.modals.loading import LoadingModal
-
-        self._loading_modal = LoadingModal()
-        self.app.push_screen(
-            self._loading_modal,
-            callback=self._on_loading_dismissed,
-        )
-        self._ai_worker = worker_method(*args)
-
     @work(thread=True)
     def _run_curiosity(self, idea_id: int) -> None:
         from anne.db.connection import get_connection
@@ -974,7 +952,7 @@ class BookWorkspaceScreen(Screen):
                 lines.append(f"Caption: {idea.presentation_text}")
             response = "\n".join(lines)
 
-            self._current_book_action = ("curiosity", str(idea_id))
+            self._current_book_action = lambda: self._start_llm_action(self._run_curiosity, idea_id)
             self.app.call_from_thread(self._dismiss_loading_and_show_response, response, f"Curiosity phrase for idea #{idea_id}")
         except Exception as e:
             if worker.is_cancelled:
@@ -1058,11 +1036,18 @@ class BookWorkspaceScreen(Screen):
             seconds_in_day = now.hour * 3600 + now.minute * 60 + now.second
             filename = f"{now.strftime('%Y-%m-%d')}-{seconds_in_day}-{self._book.slug}.md"
             book_dir = settings.books_dir / self._book.slug
-            book_dir.mkdir(parents=True, exist_ok=True)
-            output_path = book_dir / filename
-            output_path.write_text(final_digest, encoding="utf-8")
+            try:
+                book_dir.mkdir(parents=True, exist_ok=True)
+                output_path = book_dir / filename
+                output_path.write_text(final_digest, encoding="utf-8")
+            except OSError as e:
+                if worker.is_cancelled:
+                    return
+                self.app.call_from_thread(self._dismiss_loading)
+                self.app.call_from_thread(self.notify, f"Failed to save digest: {e}", severity="error")
+                return
 
-            self._current_book_action = ("digest_notes",)
+            self._current_book_action = lambda: self._start_llm_action(self._run_digest_notes)
             self.app.call_from_thread(
                 self._dismiss_loading_and_show_response,
                 final_digest,
@@ -1127,7 +1112,7 @@ class BookWorkspaceScreen(Screen):
                 lines.append("")
             response = "\n".join(lines).rstrip()
 
-            self._current_book_action = ("video_prompts",)
+            self._current_book_action = lambda: self._start_llm_action(self._run_video_prompts)
             self.app.call_from_thread(
                 self._dismiss_loading_and_show_response,
                 response,
