@@ -35,9 +35,8 @@ These can become what **the software calls an "idea"**.
 Each idea has a lifecycle:
 
 ```
-[source] → parsed → triaged → reviewed → ready → queued → published
-                                               ↘ published
-                  ↘ rejected (at any time, it's reversible)
+[source] → parsed → triaged → reviewed → ready → queued ↓
+                  ↘ rejected                   ↘ published
 ```
 
 From a source (like exported Kindle notes), the CLI parses them into the database.
