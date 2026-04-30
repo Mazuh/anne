@@ -51,8 +51,9 @@ class TestDashboard:
             table = app.screen.query_one("#dashboard-table", DataTable)
             first_row_key = list(table.rows.keys())[0]
             row_data = table.get_row(first_row_key)
-            assert row_data[0] == "Test Book"
-            assert row_data[1] == "Test Author"
+            assert row_data[0] == "test-book"
+            assert row_data[1] == "Test Book"
+            assert row_data[2] == "Test Author"
 
     async def test_dashboard_shows_idea_counts(self, app: AnneApp) -> None:
         async with app.run_test() as pilot:
@@ -60,9 +61,9 @@ class TestDashboard:
             table = app.screen.query_one("#dashboard-table", DataTable)
             first_row_key = list(table.rows.keys())[0]
             row_data = table.get_row(first_row_key)
-            # Columns: Book, Author, Parsed, Triaged, Reviewed, Ready, Queued, Published, Rejected, Total
-            assert row_data[2] == "10"  # Parsed
-            assert row_data[9] == "10"  # Total
+            # Columns: Slug, Book, Author, Parsed, Triaged, Reviewed, Ready, Queued, Published, Rejected, Total
+            assert row_data[3] == "10"  # Parsed
+            assert row_data[10] == "10"  # Total
 
     async def test_dashboard_empty(self, empty_app: AnneApp) -> None:
         async with empty_app.run_test() as pilot:
