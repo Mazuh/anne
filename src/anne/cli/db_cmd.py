@@ -9,6 +9,7 @@ from rich import print as rprint
 from anne.config.settings import Settings, load_settings
 from anne.db.connection import get_connection
 from anne.db.migrate import get_schema_version
+from anne.utils.exceptions import translate_access_errors
 
 db_app = typer.Typer(help="Database management.")
 
@@ -105,7 +106,8 @@ def db_backup(
 
     # Use SQLite backup API instead of file copy to ensure consistency
     # even if the database is open in another process (e.g. the TUI).
-    src_conn = sqlite3.connect(str(settings.db_path))
+    with translate_access_errors(settings.db_path):
+        src_conn = sqlite3.connect(str(settings.db_path))
     dst_conn = sqlite3.connect(str(backup_path))
     try:
         src_conn.backup(dst_conn)

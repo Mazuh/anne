@@ -1,4 +1,5 @@
 import typer
+from rich import print as rprint
 
 from anne import APP_AUTHOR, APP_DESCRIPTION, APP_REPO
 from anne.cli.bootstrap import bootstrap
@@ -20,3 +21,19 @@ app.add_typer(sources_module.app, name="sources")
 app.add_typer(ideas_app, name="ideas")
 app.add_typer(db_app, name="db")
 app.command("start")(start_tui)
+
+
+def main() -> None:
+    """Console-script entry point.
+
+    Wraps the Typer app so a ``WorkspaceAccessError`` raised by any command —
+    or by the TUI's own DB connections — prints actionable macOS guidance
+    instead of a raw traceback.
+    """
+    from anne.utils.exceptions import WorkspaceAccessError
+
+    try:
+        app()
+    except WorkspaceAccessError as exc:
+        rprint(f"[red]Error:[/red] {exc}")
+        raise SystemExit(1)

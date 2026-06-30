@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-anne = "anne.cli.app:app"
+anne = "anne.cli.app:main"
 
 [project.urls]
 Repository = "https://github.com/mazuh/anne"

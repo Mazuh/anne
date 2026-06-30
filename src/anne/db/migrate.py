@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+from anne.utils.exceptions import translate_access_errors
+
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 CURRENT_VERSION = 4
 
@@ -112,9 +114,10 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
 
 
 def apply_schema(db_path: Path) -> None:
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
+    with translate_access_errors(db_path):
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA foreign_keys=ON")
     try:
         version = get_schema_version(conn)
         if version >= CURRENT_VERSION:
