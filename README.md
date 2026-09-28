@@ -51,35 +51,35 @@ but to use **my own reading as fuel** to an organized and consistent flow of con
 Pipeline commands (use `--help` flag at any moment for more details):
 
 ```sh
-anne books add "O Príncipe" --author "Maquiavel"   # add a book
-anne sources import o-principe <file-or-url>        # import reading notes
-anne ideas parse [slug]                             # extract ideas from sources
-anne ideas triage [slug]                            # LLM triage (keep/reject)
-anne ideas review [slug]                            # LLM review (refine quotes, add context)
-anne ideas caption [slug]                           # LLM caption for Instagram
-anne ideas queue 42                                 # visual flag: queued for posting
-anne ideas publish 42                               # mark as published
+anne books add "O Príncipe" --author "Maquiavel"   # add a book (slug is derived from the title)
+anne sources import my-favorite-book <file-or-url> # import reading notes
+anne ideas parse [slug]                            # extract ideas from sources
+anne ideas triage [slug]                           # LLM triage (keep/reject)
+anne ideas review [slug]                           # LLM review (refine quotes, add context)
+anne ideas caption [slug]                          # LLM caption for Instagram
+anne ideas queue <id>                              # visual flag: queued for posting
+anne ideas publish <id>                            # mark as published
 ```
 
 ### Browsing and editing
 
 ```sh
 anne books list
-anne ideas list o-principe --status triaged
-anne ideas show 42
-anne ideas edit 42 --status reviewed --force
-anne ideas edit 42 --reviewed-quote "New text" --tags '["poder"]'
-anne books show o-principe
-anne sources list o-principe
-anne ideas prompt 42 -p "suggest a shorter version" # custom LLM prompt about an idea
-anne ideas curiosity -b o-principe                  # generate a curiosity phrase
+anne ideas list my-favorite-book --status triaged
+anne ideas show <id>
+anne ideas edit <id> --status reviewed --force
+anne ideas edit <id> --reviewed-quote "New text" --tags '["poder"]'
+anne books show my-favorite-book
+anne sources list my-favorite-book
+anne ideas prompt <id> -p "suggest a shorter version" # custom LLM prompt about an idea
+anne ideas curiosity -b my-favorite-book              # generate a curiosity phrase
 ```
 
 ### TUI
 
 ```sh
-anne start               # dashboard with all books
-anne start o-principe    # jump into a book workspace
+anne start                  # dashboard with all books
+anne start my-favorite-book # jump into a book workspace
 ```
 
 ![Anne TUI screenshot](.github/anne_tui_screenshot.png)
